@@ -2,21 +2,22 @@
 
 ## 1. High-Level Overview
 
-This is a Firefox WebExtension that displays exchange rates of USD, EUR, and RUB against the Belarusian ruble (BYN), sourced from the National Bank of the Republic of Belarus (NBRB) public API. The extension also provides a simple currency converter. UI is in Russian (`Observed`: `manifest.json` name/description, `popup.js` strings).
+This is a Firefox WebExtension that replaces BYN prices on AV.by with a user-selected display currency (BYN, USD, EUR, or RUB), sourced from the National Bank of the Republic of Belarus (NBRB) public API. The popup also displays exchange rates and provides a simple currency converter. UI is in Russian (`Observed`: `manifest.json` name/description, `popup.js` strings).
 
-The problem it solves: give Belarusian Firefox users quick, always-fresh BYN exchange rates via a toolbar popup, with offline resilience — cached rates survive network failures (`Observed`: `background.js` preserves previous `ratesData` on fetch failure, stores `lastError` separately).
+The problem it solves: let Belarusian Firefox users browse AV.by with prices shown in their preferred currency while keeping the original BYN prices restorable. Cached rates survive network failures (`Observed`: `background.js` preserves previous `ratesData` on fetch failure, stores `lastError` separately).
 
-Architectural paradigm: a classic WebExtension with a background event page (fetch scheduling), a shared pure-logic library, and a popup UI. No content scripts, no options page, no remote code (`Observed`: `manifest.json` permissions are only `alarms` + `storage`, single host permission for `api.nbrb.by`).
+Architectural paradigm: a classic WebExtension with a background event page (fetch scheduling), a shared pure-logic library, a popup UI, and a content script for AV.by DOM price replacement. No options page and no remote code (`Observed`: `manifest.json` permissions are `alarms` + `storage`, with host permissions for NBRB API and AV.by pages).
 
 Evidence anchors: `manifest.json`, `background.js`, `lib/rates.js`, `popup/popup.html`, `popup/popup.js`, `vitest.config.js`.
 
 ## 2. System Architecture (Logical)
 
-Three components:
+Four components:
 
 - **Shared Library** (`lib/rates.js`) — pure functions: NBRB API response parsing, currency conversion, formatting. No browser APIs, no side effects. Imported by both background and popup.
 - **Background Event Page** (`background.js`) — fetches rates from NBRB API on install, startup, and every 4 hours via `browser.alarms`. Stores results in `browser.storage.local`. Responds to popup messages for refresh and data retrieval.
 - **Popup UI** (`popup/`) — renders rates and converter on user click. Reads from storage, sends refresh messages to background. All DOM updates use `textContent`, never `innerHTML`.
+- **AV.by Content Script** (`content/avby.js`) — reads cached rates and selected display currency from storage, replaces AV.by price text, observes dynamic DOM updates, and restores original BYN text when needed.
 
 Dependency direction:
 
@@ -24,6 +25,7 @@ Dependency direction:
 popup.js ──imports──► lib/rates.js
 background.js ──imports──► lib/rates.js
 popup.js ──messages──► background.js (via browser.runtime.sendMessage)
+content/avby.js ──reads──► browser.storage.local
 ```
 
 Key boundaries:
@@ -39,16 +41,19 @@ Key boundaries:
 av_currencies/
 ├── manifest.json          Extension entrypoint, permissions, background/popup registration
 ├── background.js          Background event page: alarms, fetch, storage, message handling
+├── content/
+│   └── avby.js            AV.by content script: price replacement and DOM observation
 ├── lib/
-│   └── rates.js           Pure logic: parseRates, convert, formatRate, formatDate, formatTime
+│   └── rates.js           Pure logic: parseRates, convert, convertFromBYN, price parsing, formatting
 ├── popup/
 │   ├── popup.html         Popup markup (rates table, converter, refresh button)
 │   ├── popup.css          Styling with light/dark theme support via prefers-color-scheme
 │   └── popup.js           Popup controller: render, converter, refresh, event listeners
 ├── icons/                 Extension icons at 16/32/48/128px (PNG) + source SVG
 ├── tests/
-│   └── parse.test.js      Vitest test suite for lib/rates.js (30 tests)
-├── nbrb_reponse.json      Real NBRB API response fixture for tests
+│   ├── parse.test.js      Vitest test suite for lib/rates.js
+│   └── content.test.js    Vitest + jsdom tests for AV.by content script
+├── examples/              Saved AV.by/NBRB fixtures for tests
 ├── vitest.config.js       Test runner config: coverage on lib/, 80% threshold
 ├── Makefile               Build orchestration: test, lint, format, build, run, clean
 └── package.json           Dev dependencies only: vitest, @vitest/coverage-v8, prettier
@@ -59,6 +64,7 @@ Where is X?
 - **Rate parsing logic** → `lib/rates.js:parseRates`
 - **Currency conversion math** → `lib/rates.js:convert`
 - **API fetch and caching** → `background.js:fetchRates`
+- **AV.by price replacement** → `content/avby.js`
 - **Alarm scheduling** → `background.js:ensureAlarm`
 - **Popup rendering** → `popup/popup.js:render`, `renderRates`, `renderConverter`
 - **Test fixtures** → `nbrb_reponse.json` (real API snapshot)
@@ -93,6 +99,18 @@ user clicks toolbar icon
 
 **Offline resilience:** if `fetchRates` fails, `lastError` is stored but previous `ratesData` is preserved. Popup detects `lastError` and shows a warning alongside cached rates (`Observed`: `background.js` catch block, `popup.js` render logic).
 
+**AV.by price replacement path:**
+
+```
+user selects display currency in popup
+  → popup stores selectedCurrency in browser.storage.local
+    → content/avby.js receives storage change or reads storage on page load
+      → finds known AV.by price elements and monthly-payment text
+        → preserves original BYN text in dataset/WeakMap
+          → converts BYN to selected currency using cached NBRB rates
+            → replaces page text with formatted selected-currency price
+```
+
 ## 5. Architectural Invariants & Constraints
 
 - **Rule:** `lib/rates.js` must not import or reference any browser API (`browser.*`, `document`, `fetch`, `window`).
@@ -107,7 +125,7 @@ user clicks toolbar icon
   - **Rationale:** Prevents XSS from malformed API responses.
   - **Enforcement / Signals (Observed):** All DOM assignments in `popup/popup.js` use `textContent` or `className`.
 
-- **Rule:** No remote code execution — no CDN scripts, no inline script handlers, no `eval`.
+- **Rule:** No remote code execution — no CDN scripts and no inline script handlers.
   - **Rationale:** Content Security Policy compliance for Firefox extensions.
   - **Enforcement / Signals (Observed):** `popup.html` has no inline event handlers; no `content_security_policy` override in manifest; `web-ext lint` passes with 0 errors.
 
@@ -119,9 +137,9 @@ user clicks toolbar icon
   - **Rationale:** Matches WebExtension lifecycle — background and popup are separate execution contexts with independent lifetimes.
   - **Enforcement / Signals (Observed):** `background.js` registers `onMessage` listener; `popup.js` uses `sendMessage`; no cross-directory imports between them.
 
-- **Rule:** The only host permission is `https://api.nbrb.by/*`.
-  - **Rationale:** Principle of least privilege; no telemetry, no tracking, no third-party services.
-  - **Enforcement / Signals (Observed):** `manifest.json` `host_permissions` contains exactly one entry.
+- **Rule:** Host permissions are limited to the NBRB API and AV.by pages.
+  - **Rationale:** Principle of least privilege; the extension only needs rates from NBRB and DOM access on AV.by.
+  - **Enforcement / Signals (Observed):** `manifest.json` `host_permissions` contains `https://api.nbrb.by/*`, `https://av.by/*`, and `https://*.av.by/*`.
 
 - **Rule:** Failed API responses must not overwrite previously stored valid rates.
   - **Rationale:** Graceful degradation — users see last-known rates during network issues.
