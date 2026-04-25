@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Курсы валют НБРБ",
+  "name": "AV.by Валюты",
   "version": "1.0.0",
-  "description": "Курсы USD, EUR и RUB к BYN по данным Национального банка Республики Беларусь.",
+  "description": "Замена цен на AV.by из BYN в выбранную валюту с курсами НБРБ.",
   "permissions": ["alarms", "storage"],
   "host_permissions": [
     "https://api.nbrb.by/*",
@@ -14,7 +14,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Курсы валют НБРБ",
+    "default_title": "AV.by Валюты",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
@@ -37,8 +37,11 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "av-currencies@redpandadev.local",
-      "strict_min_version": "121.0"
+      "id": "av-by-currencies@redpandadev",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   }
 }
