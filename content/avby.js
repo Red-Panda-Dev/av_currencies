@@ -21,12 +21,15 @@
     ".card__commercial-text > span:last-child",
     ".finance-item__subtitle",
   ];
+  const FINANCE_RANGE_SELECTORS = [".finance-item__sum"];
   const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
   const SALON_SUFFIX_SELECTOR = "span:last-child";
 
   const MONTHLY_REGEX =
     /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN(\s*в\s*месяц)/i;
   const MONTHLY_MARKER_REGEX = /BYN\s*в\s*месяц/i;
+  const FINANCE_RANGE_REGEX =
+    /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*[—-]\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN/i;
   const SKIP_TEXT_NODE_TAGS = new Set([
     "SCRIPT",
     "STYLE",
@@ -111,6 +114,10 @@
 
   function collectMonthlyElements() {
     return collectElementsBySelectors(MONTHLY_ELEMENT_SELECTORS);
+  }
+
+  function collectFinanceRangeElements() {
+    return collectElementsBySelectors(FINANCE_RANGE_SELECTORS);
   }
 
   function getOriginalElementText(element) {
@@ -198,6 +205,64 @@
       const converted = convertFromBYN(bynAmount, rateInfo);
       const replacement = `${formatDisplayPrice(converted, selectedCurrency)}${match[2]}`;
       nextText = originalText.replace(MONTHLY_REGEX, replacement);
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
+  function parseBynPriceRange(value) {
+    if (typeof value !== "string") return null;
+
+    const match = value.match(FINANCE_RANGE_REGEX);
+    if (!match) return null;
+
+    const startAmount = parseBynPrice(match[1]);
+    const endAmount = parseBynPrice(match[2]);
+    if (startAmount === null || endAmount === null) return null;
+
+    return [startAmount, endAmount];
+  }
+
+  function formatDisplayPriceRange(startAmount, endAmount, currencyCode) {
+    const symbol = CURRENCY_SYMBOLS[currencyCode] || currencyCode;
+    const formatter = new Intl.NumberFormat("ru-RU", {
+      maximumFractionDigits: 0,
+    });
+    const start = formatter.format(Math.round(startAmount));
+    const end = formatter.format(Math.round(endAmount));
+    return `${start} — ${end} ${symbol}`;
+  }
+
+  function applyFinanceRangePrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (!canConvert || !rateInfo) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const bynRange = parseBynPriceRange(originalText);
+      if (!bynRange) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const [startAmount, endAmount] = bynRange;
+      nextText = formatDisplayPriceRange(
+        convertFromBYN(startAmount, rateInfo),
+        convertFromBYN(endAmount, rateInfo),
+        selectedCurrency,
+      );
       if (element.textContent !== nextText) {
         element.textContent = nextText;
       }
@@ -382,6 +447,9 @@
     const monthlyElements = collectMonthlyElements();
     applyMonthlyElementPrices(monthlyElements);
 
+    const financeRangeElements = collectFinanceRangeElements();
+    applyFinanceRangePrices(financeRangeElements);
+
     applySalonPriceSuffixes();
 
     pruneDisconnectedMonthlyNodes();
@@ -435,6 +503,10 @@
       return isInElementMatchingSelectors(node, MONTHLY_ELEMENT_SELECTORS);
     }
 
+    function isInFinanceRangeElement(node) {
+      return isInElementMatchingSelectors(node, FINANCE_RANGE_SELECTORS);
+    }
+
     function isInSalonWrapper(node) {
       return isInElementMatchingSelectors(node, [SALON_PRICE_WRAPPER_SELECTOR]);
     }
@@ -453,6 +525,7 @@
           if (
             isInPriceElement(mutation.target) ||
             isInMonthlyElement(mutation.target) ||
+            isInFinanceRangeElement(mutation.target) ||
             isInSalonWrapper(mutation.target)
           ) {
             shouldApply = true;

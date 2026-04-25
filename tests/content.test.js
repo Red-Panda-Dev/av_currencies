@@ -255,6 +255,11 @@ describe("av.by content script", () => {
       const financeItemMonthly = env.dom.window.document.querySelector(
         ".finance-item__subtitle",
       );
+      const financeRange =
+        env.dom.window.document.querySelector(".finance-item__sum");
+      const financeDate = env.dom.window.document.querySelector(
+        ".finance-item__date",
+      );
       const sideFinanceMonthly = env.dom.window.document.querySelector(
         ".side-finance__lead",
       );
@@ -268,6 +273,11 @@ describe("av.by content script", () => {
       expect(financeItemMonthly.textContent).toContain("€");
       expect(financeItemMonthly.textContent).toContain("в");
       expect(financeItemMonthly.textContent).not.toContain("BYN");
+      expect(financeRange.textContent).toContain("€");
+      expect(financeRange.textContent).toContain("—");
+      expect(financeRange.textContent).not.toContain("BYN");
+      expect(financeRange.dataset.avCurrenciesOriginalText).toContain("BYN");
+      expect(financeDate.textContent).toBe("13 — 84 мес.");
       expect(sideFinanceMonthly.textContent).toContain("€ в месяц");
 
       const monthlyNode = env.dom.window.document.createElement("div");
@@ -281,6 +291,8 @@ describe("av.by content script", () => {
         cardCommercialMonthly.dataset.avCurrenciesOriginalText;
       const originalFinanceItemMonthly =
         financeItemMonthly.dataset.avCurrenciesOriginalText;
+      const originalFinanceRange =
+        financeRange.dataset.avCurrenciesOriginalText;
 
       await env.browserMock.browser.storage.local.set({
         selectedCurrency: "BYN",
@@ -291,6 +303,8 @@ describe("av.by content script", () => {
         originalCardCommercialMonthly,
       );
       expect(financeItemMonthly.textContent).toBe(originalFinanceItemMonthly);
+      expect(financeRange.textContent).toBe(originalFinanceRange);
+      expect(financeDate.textContent).toBe("13 — 84 мес.");
       expect(sideFinanceMonthly.textContent).toBe("1386 BYN в месяц");
     } finally {
       env.cleanup();
@@ -415,12 +429,27 @@ describe("av.by content script", () => {
         "1386 BYN в месяц",
       );
 
+      const dynamicFinanceRange = env.dom.window.document.createElement("div");
+      dynamicFinanceRange.className = "finance-item__sum";
+      dynamicFinanceRange.textContent = "9 600 — 813 333 BYN";
+      env.dom.window.document.body.append(dynamicFinanceRange);
+
+      await flushTicks();
+
+      expect(dynamicFinanceRange.textContent).toContain("$");
+      expect(dynamicFinanceRange.textContent).toContain("—");
+      expect(dynamicFinanceRange.textContent).not.toContain("BYN");
+      expect(dynamicFinanceRange.dataset.avCurrenciesOriginalText).toBe(
+        "9 600 — 813 333 BYN",
+      );
+
       await env.browserMock.browser.storage.local.set({
         selectedCurrency: "BYN",
       });
       await flushTicks();
 
       expect(dynamicCommercialMonthly.textContent).toBe("1386 BYN в месяц");
+      expect(dynamicFinanceRange.textContent).toBe("9 600 — 813 333 BYN");
     } finally {
       env.cleanup();
     }
