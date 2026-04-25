@@ -1,11 +1,15 @@
-.PHONY: test lint build clean run run-android run-android-nightly android-log android-enable-debug-emulator format format-check test-coverage
+.PHONY: test lint build build-chrome package-firefox package-chrome clean run run-chrome run-android run-android-nightly android-log android-enable-debug-emulator format format-check test-coverage
 
 EXT_DIR := .
 BUILD_DIR := build
+FIREFOX_BUILD_DIR := $(BUILD_DIR)/firefox
+CHROME_BUILD_DIR := $(BUILD_DIR)/chrome
 EXT_NAME := av-currencies
 EXT_ID := av-by-currencies@redpandadev
 ANDROID_APK ?= org.mozilla.fenix
 ADB_DEVICE ?=
+CHROME_BIN ?= chromium
+CHROME_PROFILE_DIR ?= /tmp/$(EXT_NAME)-chrome-profile
 
 test:
 	npm run test:coverage
@@ -20,22 +24,36 @@ format-check:
 	npm run format:check
 
 lint:
-	npx web-ext lint --source-dir $(EXT_DIR) --ignore-files "coverage/**" "node_modules/**" "tests/**" "examples/**"
+	npx web-ext lint --source-dir $(EXT_DIR) --ignore-files "coverage/**" "node_modules/**" "tests/**" "examples/**" "build/**" "*.zip"
 
-build: format-check lint test
-	rm -rf $(BUILD_DIR)
-	mkdir -p $(BUILD_DIR)
-	cp -r manifest.json background.js lib content popup icons $(BUILD_DIR)/
-	cp examples/nbrb_response.json $(BUILD_DIR)/
-	cd $(BUILD_DIR) && zip -r ../$(EXT_NAME).zip .
+package-firefox:
+	rm -rf $(FIREFOX_BUILD_DIR)
+	mkdir -p $(FIREFOX_BUILD_DIR)
+	cp -r manifest.json background.js lib content popup icons $(FIREFOX_BUILD_DIR)/
+	cp examples/nbrb_response.json $(FIREFOX_BUILD_DIR)/
+	rm -f $(EXT_NAME).zip
+	cd $(FIREFOX_BUILD_DIR) && zip -r ../../$(EXT_NAME).zip .
 	@echo "Built: $(EXT_NAME).zip"
+
+build-chrome: format-check lint test package-chrome
+
+package-chrome:
+	node scripts/build-chrome.mjs
+	rm -f $(EXT_NAME)-chrome.zip
+	cd $(CHROME_BUILD_DIR) && zip -r ../../$(EXT_NAME)-chrome.zip .
+	@echo "Built: $(EXT_NAME)-chrome.zip"
+
+build: format-check lint test package-firefox package-chrome
 
 clean:
 	rm -rf $(BUILD_DIR) coverage
-	rm -f $(EXT_NAME).zip
+	rm -f $(EXT_NAME).zip $(EXT_NAME)-chrome.zip
 
 run: lint
 	npx web-ext run --source-dir $(EXT_DIR) --target firefox-desktop
+
+run-chrome: package-chrome
+	$(CHROME_BIN) --user-data-dir="$(CHROME_PROFILE_DIR)" --no-first-run --no-default-browser-check --disable-extensions-except="$(abspath $(CHROME_BUILD_DIR))" --load-extension="$(abspath $(CHROME_BUILD_DIR))"
 
 run-android: lint
 	npx web-ext run --source-dir $(EXT_DIR) --target firefox-android --adb-remove-old-artifacts $(if $(ADB_DEVICE),--adb-device $(ADB_DEVICE),)

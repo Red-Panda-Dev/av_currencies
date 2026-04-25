@@ -1,6 +1,6 @@
 # AV.by Валюты
 
-Firefox-расширение для автоматической замены цен на AV.by из белорусских рублей (BYN) в выбранную валюту: USD, EUR или RUB. Курсы берутся из публичного API Национального банка Республики Беларусь.
+Браузерное расширение (Manifest V3) для Firefox и Chrome-based браузеров, которое автоматически заменяет цены на AV.by из белорусских рублей (BYN) в выбранную валюту: USD, EUR или RUB. Курсы берутся из публичного API Национального банка Республики Беларусь.
 
 Основная функция расширения — менять отображаемые цены на страницах AV.by, чтобы пользователь сразу видел стоимость автомобиля в удобной валюте.
 
@@ -16,7 +16,7 @@ Firefox-расширение для автоматической замены ц
 
 ## Как пользоваться
 
-1. Установите расширение в Firefox.
+1. Установите расширение в Firefox или Chrome-based браузер.
 2. Откройте popup расширения.
 3. В поле `Валюта на av.by` выберите `USD`, `EUR`, `RUB` или `BYN`.
 4. Откройте или обновите страницу на `https://av.by/`.
@@ -26,7 +26,9 @@ Firefox-расширение для автоматической замены ц
 
 ### `manifest.json`
 
-Описывает расширение для Firefox: имя, версию, разрешения, popup, background script и content script для AV.by.
+Базовый манифест расширения: имя, версию, разрешения, popup, background script и content script для AV.by.
+
+Для Firefox используется исходный `manifest.json`, а для Chrome build-скрипт генерирует совместимый манифест в `build/chrome/manifest.json`.
 
 Важные разрешения:
 
@@ -99,6 +101,19 @@ Content script, который работает на страницах AV.by.
 - Поведение content script на сохраненных HTML-примерах AV.by.
 - Восстановление оригинальных BYN-цен.
 
+### `scripts/build-chrome.mjs`
+
+Build-скрипт для Chrome-based браузеров.
+
+Функции:
+
+- Создает `build/chrome/`.
+- Копирует файлы расширения для Chrome-пакета.
+- Генерирует `build/chrome/manifest.json` из `manifest.json` (заменяет background на `service_worker`, удаляет `browser_specific_settings`).
+- Добавляет в `build/chrome/README_CHROME_INSTALL.txt` напоминание, что в Chrome нужно выбирать именно `build/chrome`, а не корень репозитория.
+
+В исходных entrypoint-файлах (`background.js`, `content/avby.js`, `popup/popup.js`) есть shim `globalThis.browser ??= globalThis.chrome;`, чтобы один код работал с Firefox `browser.*` и Chrome `chrome.*` API.
+
 ## Разработка
 
 Установить зависимости:
@@ -129,6 +144,18 @@ npm run format:check
 
 ```bash
 make run
+```
+
+Запустить Chrome-based браузер с временно установленным unpacked-расширением:
+
+```bash
+make run-chrome
+```
+
+Если бинарник Chrome отличается от `chromium`, можно указать его явно:
+
+```bash
+CHROME_BIN=google-chrome make run-chrome
 ```
 
 Запустить расширение в Firefox для Android (через `web-ext`):
@@ -167,11 +194,38 @@ ADB_DEVICE=<device-id> ANDROID_APK=org.mozilla.fenix make android-enable-debug-e
 make android-log
 ```
 
-Собрать архив расширения:
+Собрать архив расширения для Firefox:
 
 ```bash
 make build
 ```
+
+Собрать архив расширения для Chrome-based браузеров:
+
+```bash
+make build-chrome
+```
+
+Собрать оба архива:
+
+```bash
+make build-all
+```
+
+## Установка в Chrome-based браузеры (Developer Mode)
+
+1. Соберите Chrome-версию:
+
+   ```bash
+   make build-chrome
+   ```
+
+2. Откройте страницу расширений (`chrome://extensions`, `edge://extensions`, `brave://extensions` и т.д.).
+3. Включите `Developer mode`.
+4. Нажмите `Load unpacked`.
+5. Выберите каталог `build/chrome`, не корень репозитория.
+
+Если в Chrome появляется ошибка `'background.scripts' requires manifest version of 2 or lower`, значит был выбран корень репозитория с Firefox-манифестом. Удалите это расширение из Chrome и загрузите `build/chrome` заново.
 
 ## Тестирование на Firefox для Android
 
@@ -213,16 +267,16 @@ make build
 Перед релизом выполните:
 
 ```bash
-make build
+make build-all
 ```
 
-Команда выполняет проверку форматирования, lint, тесты с покрытием и собирает `av-currencies.zip`.
+Команда выполняет проверку форматирования, lint, тесты с покрытием и собирает `av-currencies.zip` (Firefox) и `av-currencies-chrome.zip` (Chrome-based).
 
 ## Приватность
 
 Расширение не собирает и не передает пользовательские данные. Оно обращается только к API НБРБ для получения курсов валют и работает локально с DOM страниц AV.by.
 
-Выбранная валюта и последние курсы хранятся локально в Firefox через `browser.storage.local`.
+Выбранная валюта и последние курсы хранятся локально в браузере через `browser.storage.local`.
 
 ## ID расширения Firefox
 

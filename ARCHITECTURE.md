@@ -2,13 +2,13 @@
 
 ## 1. High-Level Overview
 
-This is a Firefox WebExtension (Manifest V3) that replaces BYN prices on AV.by with USD, EUR, or RUB equivalents using exchange rates from the National Bank of the Republic of Belarus (NBRB) public API. It also provides a browser popup with current rate display, a simple currency converter, and a display-currency selector. The UI is in Russian. The extension is offline-resilient: previously cached rates persist across network failures.
+This is a cross-browser WebExtension (Manifest V3) for Firefox and Chrome-based browsers that replaces BYN prices on AV.by with USD, EUR, or RUB equivalents using exchange rates from the National Bank of the Republic of Belarus (NBRB) public API. It also provides a browser popup with current rate display, a simple currency converter, and a display-currency selector. The UI is in Russian. The extension is offline-resilient: previously cached rates persist across network failures.
 
-**Observed** — Extension identity and purpose are stated in `manifest.json:3-5`, `README.md:1-5`, and `AGENTS.md:5`. Three host permissions (`https://api.nbrb.by/*`, `https://av.by/*`, `https://*.av.by/*`) and two extension permissions (`storage`, `alarms`) are declared in `manifest.json:6-11`.
+**Observed** — Extension identity and purpose are stated in `manifest.json`, `README.md`, and `AGENTS.md`. Three host permissions (`https://api.nbrb.by/*`, `https://av.by/*`, `https://*.av.by/*`) and two extension permissions (`storage`, `alarms`) are declared in `manifest.json` and carried into the generated Chrome manifest.
 
 **Observed** — The NBRB API endpoint and 240-minute refresh interval are constants in `background.js:3-5`.
 
-**Observed** — The build pipeline (format-check, web-ext lint, tests with 80% coverage, zip) is defined in `Makefile:25-31` and `vitest.config.js:11-16`.
+**Observed** — The build pipeline (format-check, web-ext lint, tests with 80% coverage, Firefox zip, Chrome zip) is defined in `Makefile` and `vitest.config.js:11-16`.
 
 **Observed** — UI strings are exclusively in Russian throughout `popup/popup.html`, `popup/popup.js`, and `content/avby.js`.
 
@@ -44,7 +44,7 @@ Content Script ──duplicates──▶ (subset of lib/rates.js)
 ## 3. Code Map (Physical)
 
 ```
-manifest.json           # MV3 manifest: permissions, entrypoints, extension ID
+manifest.json           # Base MV3 manifest (Firefox source of truth)
 background.js           # Background event page (ES module): fetch, alarms, storage, messaging
 lib/
   rates.js              # Pure logic: parse, convert, format — no browser APIs
@@ -57,13 +57,24 @@ popup/
 tests/
   parse.test.js         # Vitest unit tests for lib/rates.js
   content.test.js       # Vitest + jsdom tests for content/avby.js
+scripts/
+  build-chrome.mjs      # Generates Chrome build, transforms manifest, writes install note
 examples/
   nbrb_response.json    # Real NBRB API response fixture
   index.html            # Saved AV.by listing page fixture
   auto_card.html        # Saved AV.by car detail page fixture
-Makefile                # build/run/lint/test targets; web-ext commands
+Makefile                # build/run/lint/test targets for Firefox and Chrome
 vitest.config.js        # Vitest config with 80% coverage threshold on lib/
 AGENTS.md               # Contributor-facing rules and conventions
+```
+
+Generated artifacts (not source of truth):
+
+```
+build/firefox/          # Firefox packaging directory
+build/chrome/           # Chrome packaging directory with generated manifest.json
+av-currencies.zip       # Firefox package
+av-currencies-chrome.zip # Chrome-based package
 ```
 
 - **Where is currency conversion math?** `lib/rates.js` (canonical) and duplicated in `content/avby.js`.

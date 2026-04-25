@@ -1,3 +1,5 @@
+globalThis.browser ??= globalThis.chrome;
+
 import {
   DISPLAY_CURRENCIES,
   SCALE_LABELS,

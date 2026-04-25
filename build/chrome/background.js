@@ -1,3 +1,5 @@
+globalThis.browser ??= globalThis.chrome;
+
 import { TARGET_CURRENCIES, parseRates } from "./lib/rates.js";
 
 const API_URL = "https://api.nbrb.by/exrates/rates?periodicity=0";

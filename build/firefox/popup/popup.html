@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="popup">
+      <header class="header">
+        <h1 class="header__title">AV.by Валюты</h1>
+        <span id="status" class="header__status"></span>
+      </header>
+
+      <section id="rates-section" class="rates" hidden>
+        <div class="rate-row">
+          <span class="rate-row__flag">🇺🇸</span>
+          <span class="rate-row__code">USD</span>
+          <span class="rate-row__value" id="rate-usd"></span>
+        </div>
+        <div class="rate-row">
+          <span class="rate-row__flag">🇪🇺</span>
+          <span class="rate-row__code">EUR</span>
+          <span class="rate-row__value" id="rate-eur"></span>
+        </div>
+        <div class="rate-row">
+          <span class="rate-row__flag">🇷🇺</span>
+          <span class="rate-row__code">RUB</span>
+          <span class="rate-row__value" id="rate-rub"></span>
+        </div>
+      </section>
+
+      <section id="loading" class="loading">
+        <span>Загрузка…</span>
+      </section>
+
+      <section id="error-section" class="error" hidden>
+        <span id="error-text"></span>
+      </section>
+
+      <section class="converter" id="converter-section" hidden>
+        <h2 class="converter__title">Конвертер</h2>
+        <div class="converter__row">
+          <input
+            type="number"
+            id="converter-amount"
+            class="converter__input"
+            min="0"
+            step="any"
+            value="1"
+            aria-label="Сумма"
+          />
+          <select
+            id="converter-currency"
+            class="converter__select"
+            aria-label="Валюта"
+          >
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="RUB">RUB</option>
+          </select>
+        </div>
+        <div class="converter__result" id="converter-result"></div>
+      </section>
+
+      <section class="settings" id="settings-section">
+        <label class="settings__label" for="display-currency"
+          >Валюта на av.by</label
+        >
+        <select
+          id="display-currency"
+          class="settings__select"
+          aria-label="Валюта для цен на av.by"
+        >
+          <option value="BYN">BYN</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+          <option value="RUB">RUB</option>
+        </select>
+      </section>
+
+      <footer class="footer">
+        <span id="updated-at" class="footer__updated"></span>
+        <button id="refresh-btn" class="footer__refresh" type="button">
+          Обновить
+        </button>
+      </footer>
+    </div>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

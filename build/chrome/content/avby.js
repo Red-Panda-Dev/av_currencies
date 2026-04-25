@@ -1,3 +1,5 @@
+globalThis.browser ??= globalThis.chrome;
+
 (function initAvByCurrencyConversion() {
   if (typeof browser === "undefined" || !browser.storage?.local) return;
 
@@ -16,6 +18,9 @@
     ".listing-top__price-primary",
     ".featured__price-value strong",
     ".salon-listing-top__prices > div",
+    ".salon-listing-model__banner-priсe",
+    ".salon-listing-items__item-price-byn",
+    ".salon-card__price-primary",
   ];
   const MONTHLY_ELEMENT_SELECTORS = [
     ".card__commercial-text > span:last-child",
@@ -164,7 +169,10 @@
       }
 
       const converted = convertFromBYN(bynAmount, rateInfo);
-      nextText = formatDisplayPrice(converted, selectedCurrency);
+      const formattedPrice = formatDisplayPrice(converted, selectedCurrency);
+      nextText = /^\s*от\s+/i.test(originalText)
+        ? `от ${formattedPrice}`
+        : formattedPrice;
       if (element.textContent !== nextText) {
         element.textContent = nextText;
       }
