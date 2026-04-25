@@ -11,15 +11,25 @@
 
   const PRICE_SELECTORS = [
     ".listing-index__price",
+    ".listing-item__price-primary",
     ".card__price-button",
     ".listing-top__price-primary",
     ".featured__price-value strong",
     ".salon-listing-top__prices > div",
   ];
+  const MONTHLY_ELEMENT_SELECTORS = [
+    ".card__commercial-text > span:last-child",
+    ".finance-item__subtitle",
+  ];
+  const FINANCE_RANGE_SELECTORS = [".finance-item__sum"];
+  const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
+  const SALON_SUFFIX_SELECTOR = "span:last-child";
 
   const MONTHLY_REGEX =
     /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN(\s*в\s*месяц)/i;
   const MONTHLY_MARKER_REGEX = /BYN\s*в\s*месяц/i;
+  const FINANCE_RANGE_REGEX =
+    /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*[—-]\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN/i;
   const SKIP_TEXT_NODE_TAGS = new Set([
     "SCRIPT",
     "STYLE",
@@ -81,14 +91,14 @@
     return Boolean(getRateInfo(selectedCurrency));
   }
 
-  function collectPriceElements() {
+  function collectElementsBySelectors(selectors) {
     if (!document || typeof document.querySelectorAll !== "function") {
       return [];
     }
 
     const elements = new Set();
 
-    for (const selector of PRICE_SELECTORS) {
+    for (const selector of selectors) {
       const list = document.querySelectorAll(selector);
       for (const element of list) {
         elements.add(element);
@@ -96,6 +106,18 @@
     }
 
     return [...elements];
+  }
+
+  function collectPriceElements() {
+    return collectElementsBySelectors(PRICE_SELECTORS);
+  }
+
+  function collectMonthlyElements() {
+    return collectElementsBySelectors(MONTHLY_ELEMENT_SELECTORS);
+  }
+
+  function collectFinanceRangeElements() {
+    return collectElementsBySelectors(FINANCE_RANGE_SELECTORS);
   }
 
   function getOriginalElementText(element) {
@@ -145,6 +167,136 @@
       nextText = formatDisplayPrice(converted, selectedCurrency);
       if (element.textContent !== nextText) {
         element.textContent = nextText;
+      }
+    }
+  }
+
+  function applyMonthlyElementPrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (!canConvert || !rateInfo) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const match = originalText.match(MONTHLY_REGEX);
+      if (!match) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const bynAmount = getElementBynAmount(element, originalText);
+      if (bynAmount === null) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const converted = convertFromBYN(bynAmount, rateInfo);
+      const replacement = `${formatDisplayPrice(converted, selectedCurrency)}${match[2]}`;
+      nextText = originalText.replace(MONTHLY_REGEX, replacement);
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
+  function parseBynPriceRange(value) {
+    if (typeof value !== "string") return null;
+
+    const match = value.match(FINANCE_RANGE_REGEX);
+    if (!match) return null;
+
+    const startAmount = parseBynPrice(match[1]);
+    const endAmount = parseBynPrice(match[2]);
+    if (startAmount === null || endAmount === null) return null;
+
+    return [startAmount, endAmount];
+  }
+
+  function formatDisplayPriceRange(startAmount, endAmount, currencyCode) {
+    const symbol = CURRENCY_SYMBOLS[currencyCode] || currencyCode;
+    const formatter = new Intl.NumberFormat("ru-RU", {
+      maximumFractionDigits: 0,
+    });
+    const start = formatter.format(Math.round(startAmount));
+    const end = formatter.format(Math.round(endAmount));
+    return `${start} — ${end} ${symbol}`;
+  }
+
+  function applyFinanceRangePrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (!canConvert || !rateInfo) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const bynRange = parseBynPriceRange(originalText);
+      if (!bynRange) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const [startAmount, endAmount] = bynRange;
+      nextText = formatDisplayPriceRange(
+        convertFromBYN(startAmount, rateInfo),
+        convertFromBYN(endAmount, rateInfo),
+        selectedCurrency,
+      );
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
+  function isBynSuffixText(value) {
+    if (typeof value !== "string") return false;
+
+    const normalized = value.replace(/[\s\u00A0\u202F]/g, "").toLowerCase();
+    return normalized === "р." || normalized === "р" || normalized === "p.";
+  }
+
+  function applySalonPriceSuffixes() {
+    if (!document || typeof document.querySelectorAll !== "function") {
+      return;
+    }
+
+    const canConvert = shouldConvertPrices();
+    const wrappers = document.querySelectorAll(SALON_PRICE_WRAPPER_SELECTOR);
+
+    for (const wrapper of wrappers) {
+      const suffixElement = wrapper.querySelector(SALON_SUFFIX_SELECTOR);
+      if (!suffixElement) continue;
+
+      const originalSuffix = getOriginalElementText(suffixElement);
+      let nextSuffix = originalSuffix;
+
+      if (canConvert && isBynSuffixText(originalSuffix)) {
+        nextSuffix = "";
+      }
+
+      if (suffixElement.textContent !== nextSuffix) {
+        suffixElement.textContent = nextSuffix;
       }
     }
   }
@@ -226,8 +378,9 @@
     if (!root) return;
 
     if (root.nodeType === NODE_TYPE_TEXT) {
-      registerMonthlyNode(root);
-      pendingMonthlyNodes.add(root);
+      if (registerMonthlyNode(root)) {
+        pendingMonthlyNodes.add(root);
+      }
       return;
     }
 
@@ -291,6 +444,14 @@
     const elements = collectPriceElements();
     applyElementPrices(elements);
 
+    const monthlyElements = collectMonthlyElements();
+    applyMonthlyElementPrices(monthlyElements);
+
+    const financeRangeElements = collectFinanceRangeElements();
+    applyFinanceRangePrices(financeRangeElements);
+
+    applySalonPriceSuffixes();
+
     pruneDisconnectedMonthlyNodes();
 
     for (const node of pendingMonthlyNodes) {
@@ -319,12 +480,56 @@
     const root = document.body || document.documentElement;
     if (!root) return;
 
+    function isInElementMatchingSelectors(node, selectors) {
+      const parentElement = node?.parentElement;
+      if (!parentElement || typeof parentElement.closest !== "function") {
+        return false;
+      }
+
+      for (const selector of selectors) {
+        if (parentElement.closest(selector)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function isInPriceElement(node) {
+      return isInElementMatchingSelectors(node, PRICE_SELECTORS);
+    }
+
+    function isInMonthlyElement(node) {
+      return isInElementMatchingSelectors(node, MONTHLY_ELEMENT_SELECTORS);
+    }
+
+    function isInFinanceRangeElement(node) {
+      return isInElementMatchingSelectors(node, FINANCE_RANGE_SELECTORS);
+    }
+
+    function isInSalonWrapper(node) {
+      return isInElementMatchingSelectors(node, [SALON_PRICE_WRAPPER_SELECTOR]);
+    }
+
     const observer = new MutationObserver((mutations) => {
-      let hasAddedNodes = false;
+      let shouldApply = false;
 
       for (const mutation of mutations) {
         if (mutation.type === "characterData") {
-          pendingMonthlyNodes.add(mutation.target);
+          if (registerMonthlyNode(mutation.target)) {
+            pendingMonthlyNodes.add(mutation.target);
+            shouldApply = true;
+            continue;
+          }
+
+          if (
+            isInPriceElement(mutation.target) ||
+            isInMonthlyElement(mutation.target) ||
+            isInFinanceRangeElement(mutation.target) ||
+            isInSalonWrapper(mutation.target)
+          ) {
+            shouldApply = true;
+          }
           continue;
         }
 
@@ -332,13 +537,13 @@
           continue;
         }
 
-        hasAddedNodes = true;
+        shouldApply = true;
         for (const node of mutation.addedNodes) {
           collectMonthlyNodesFromSubtree(node);
         }
       }
 
-      if (!hasAddedNodes && pendingMonthlyNodes.size === 0) {
+      if (!shouldApply) {
         return;
       }
 
