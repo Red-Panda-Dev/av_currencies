@@ -143,10 +143,22 @@ make run-android
 make run-android-nightly
 ```
 
+Запустить с явным Android-пакетом Firefox (например, `org.mozilla.firefox`, если тестируется обычный Firefox вместо Nightly):
+
+```bash
+ANDROID_APK=org.mozilla.firefox make run-android-nightly
+```
+
 Если подключено несколько Android-устройств:
 
 ```bash
 ADB_DEVICE=<device-id> make run-android-nightly
+```
+
+Для root-эмулятора можно автоматически включить prefs удаленной отладки:
+
+```bash
+ADB_DEVICE=<device-id> ANDROID_APK=org.mozilla.fenix make android-enable-debug-emulator
 ```
 
 Логи расширения на Android (фильтр по ID расширения):
@@ -171,8 +183,9 @@ make build
    adb devices
    ```
 
-4. Установите подходящий Firefox для Android:
+4. Установите подходящий Firefox для Android. Версия должна быть не ниже `strict_min_version` из `manifest.json` (`142.0`), иначе временная установка расширения будет некорректной.
    - Nightly: пакет `org.mozilla.fenix`.
+   - Для x86_64-эмулятора используйте x86_64 APK Nightly из архива Mozilla, например `https://archive.mozilla.org/pub/fenix/nightly/`.
 5. Запустите расширение:
 
    ```bash
@@ -187,6 +200,13 @@ make build
    ```
 
 Примечание: для загрузки временного расширения в Firefox Android должна быть открыта хотя бы одна вкладка браузера.
+
+Если `web-ext run` зависает на `Waiting for ... Remote Debugging Server`, включите в Firefox Android:
+
+1. `Settings` -> `Developer tools` -> `Remote debugging via USB`.
+2. Для эмулятора с root можно выполнить `make android-enable-debug-emulator` (см. команду выше).
+
+Если текущий эмулятор запущен без аппаратного ускорения (`/dev/kvm` недоступен), современные Nightly-сборки могут зависать или показывать `Firefox Nightly isn't responding` до открытия debugger socket. В этом случае проверка блокируется средой выполнения: используйте реальное устройство или KVM-ускоренный эмулятор.
 
 ## Релиз
 
