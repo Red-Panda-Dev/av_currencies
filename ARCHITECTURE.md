@@ -2,165 +2,150 @@
 
 ## 1. High-Level Overview
 
-This is a Firefox WebExtension that replaces BYN prices on AV.by with a user-selected display currency (BYN, USD, EUR, or RUB), sourced from the National Bank of the Republic of Belarus (NBRB) public API. The popup also displays exchange rates and provides a simple currency converter. UI is in Russian (`Observed`: `manifest.json` name/description, `popup.js` strings).
+This is a Firefox WebExtension (Manifest V3) that replaces BYN prices on AV.by with USD, EUR, or RUB equivalents using exchange rates from the National Bank of the Republic of Belarus (NBRB) public API. It also provides a browser popup with current rate display, a simple currency converter, and a display-currency selector. The UI is in Russian. The extension is offline-resilient: previously cached rates persist across network failures.
 
-The problem it solves: let Belarusian Firefox users browse AV.by with prices shown in their preferred currency while keeping the original BYN prices restorable. Cached rates survive network failures (`Observed`: `background.js` preserves previous `ratesData` on fetch failure, stores `lastError` separately).
+**Observed** — Extension identity and purpose are stated in `manifest.json:3-5`, `README.md:1-5`, and `AGENTS.md:5`. Three host permissions (`https://api.nbrb.by/*`, `https://av.by/*`, `https://*.av.by/*`) and two extension permissions (`storage`, `alarms`) are declared in `manifest.json:6-11`.
 
-Architectural paradigm: a classic WebExtension with a background event page (fetch scheduling), a shared pure-logic library, a popup UI, and a content script for AV.by DOM price replacement. No options page and no remote code (`Observed`: `manifest.json` permissions are `alarms` + `storage`, with host permissions for NBRB API and AV.by pages).
+**Observed** — The NBRB API endpoint and 240-minute refresh interval are constants in `background.js:3-5`.
 
-Evidence anchors: `manifest.json`, `background.js`, `lib/rates.js`, `popup/popup.html`, `popup/popup.js`, `vitest.config.js`.
+**Observed** — The build pipeline (format-check, web-ext lint, tests with 80% coverage, zip) is defined in `Makefile:25-31` and `vitest.config.js:11-16`.
+
+**Observed** — UI strings are exclusively in Russian throughout `popup/popup.html`, `popup/popup.js`, and `content/avby.js`.
 
 ## 2. System Architecture (Logical)
 
-Four components:
+Four components, each with a distinct runtime role:
 
-- **Shared Library** (`lib/rates.js`) — pure functions: NBRB API response parsing, currency conversion, formatting. No browser APIs, no side effects. Imported by both background and popup.
-- **Background Event Page** (`background.js`) — fetches rates from NBRB API on install, startup, and every 4 hours via `browser.alarms`. Stores results in `browser.storage.local`. Responds to popup messages for refresh and data retrieval.
-- **Popup UI** (`popup/`) — renders rates and converter on user click. Reads from storage, sends refresh messages to background. All DOM updates use `textContent`, never `innerHTML`.
-- **AV.by Content Script** (`content/avby.js`) — reads cached rates and selected display currency from storage, replaces AV.by price text, observes dynamic DOM updates, and restores original BYN text when needed.
+1. **Pure Logic** (`lib/rates.js`) — stateless functions for parsing API responses, converting currencies, and formatting prices. Zero browser or Node dependencies. Shared source of truth for conversion math and formatting.
 
-Dependency direction:
+2. **Background Script** (`background.js`) — the extension's sole network actor. Fetches rates from the NBRB API on install, startup, alarm (every 240 min), and on-demand messages. Persists results to `browser.storage.local`. Never touches the DOM.
+
+3. **Content Script** (`content/avby.js`) — self-contained IIFE injected into AV.by pages. Reads rates and the selected display currency from `browser.storage.local`. Finds price elements in the live DOM, converts and replaces their text, and monitors mutations for dynamically loaded content. Cannot import ES modules; carries duplicated copies of three core functions from `lib/rates.js`.
+
+4. **Popup UI** (`popup/`) — HTML/CSS/JS panel opened by the browser action. Displays current rates, a BYN converter, a display-currency selector, and a manual refresh button. Reads rates via `browser.runtime.sendMessage` to the background script. Never calls `fetch` directly.
+
+**Dependency direction:**
 
 ```
-popup.js ──imports──► lib/rates.js
-background.js ──imports──► lib/rates.js
-popup.js ──messages──► background.js (via browser.runtime.sendMessage)
-content/avby.js ──reads──► browser.storage.local
+Popup ──imports──▶ lib/rates.js
+Popup ──messages──▶ Background Script
+Background ──imports──▶ lib/rates.js
+Content Script ──storage──▶ browser.storage.local ◀──storage── Background Script
+Content Script ──duplicates──▶ (subset of lib/rates.js)
 ```
 
-Key boundaries:
+**Key boundaries:**
 
-- `lib/rates.js` has zero browser API dependencies — it is testable in Node without mocks.
-- Background and popup never import each other directly; they communicate via `browser.runtime.sendMessage`.
-- The popup never calls `fetch` directly; all network access is centralized in the background script.
-- No external dependencies at runtime — no CDN, no bundler output, no remote scripts (`Observed`: no `content_security_policy` override in manifest, no script tags in popup HTML).
+- `lib/rates.js` does **not** depend on `browser.*`, `document`, `fetch`, `window`, or any Node built-in.
+- The popup does **not** call `fetch`; all network access goes through the background script via `browser.runtime.sendMessage`.
+- The content script does **not** call `fetch` or `XMLHttpRequest`; it reads rates from `browser.storage.local` and requests a fetch via the `ensureRates` message if storage is empty.
+- The popup and background script do **not** share a JavaScript module scope; they communicate exclusively through `browser.runtime.sendMessage` and `browser.storage.local`.
 
 ## 3. Code Map (Physical)
 
 ```
-av_currencies/
-├── manifest.json          Extension entrypoint, permissions, background/popup registration
-├── background.js          Background event page: alarms, fetch, storage, message handling
-├── content/
-│   └── avby.js            AV.by content script: price replacement and DOM observation
-├── lib/
-│   └── rates.js           Pure logic: parseRates, convert, convertFromBYN, price parsing, formatting
-├── popup/
-│   ├── popup.html         Popup markup (rates table, converter, refresh button)
-│   ├── popup.css          Styling with light/dark theme support via prefers-color-scheme
-│   └── popup.js           Popup controller: render, converter, refresh, event listeners
-├── icons/                 Extension icons at 16/32/48/128px (PNG) + source SVG
-├── tests/
-│   ├── parse.test.js      Vitest test suite for lib/rates.js
-│   └── content.test.js    Vitest + jsdom tests for AV.by content script
-├── examples/              Saved AV.by/NBRB fixtures for tests
-├── vitest.config.js       Test runner config: coverage on lib/, 80% threshold
-├── Makefile               Build orchestration: test, lint, format, build, run, Android run/log, clean
-└── package.json           Dev dependencies only: vitest, @vitest/coverage-v8, jsdom, prettier
+manifest.json           # MV3 manifest: permissions, entrypoints, extension ID
+background.js           # Background event page (ES module): fetch, alarms, storage, messaging
+lib/
+  rates.js              # Pure logic: parse, convert, format — no browser APIs
+content/
+  avby.js               # AV.by content script (self-contained IIFE, no imports)
+popup/
+  popup.html            # Popup markup (lang="ru", loads popup.js as ES module)
+  popup.css             # Styling with light/dark theme via prefers-color-scheme
+  popup.js              # Popup controller: render rates, converter, refresh, currency selector
+tests/
+  parse.test.js         # Vitest unit tests for lib/rates.js
+  content.test.js       # Vitest + jsdom tests for content/avby.js
+examples/
+  nbrb_response.json    # Real NBRB API response fixture
+  index.html            # Saved AV.by listing page fixture
+  auto_card.html        # Saved AV.by car detail page fixture
+Makefile                # build/run/lint/test targets; web-ext commands
+vitest.config.js        # Vitest config with 80% coverage threshold on lib/
+AGENTS.md               # Contributor-facing rules and conventions
 ```
 
-Where is X?
-
-- **Rate parsing logic** → `lib/rates.js:parseRates`
-- **Currency conversion math** → `lib/rates.js:convert`
-- **API fetch and caching** → `background.js:fetchRates`
-- **AV.by price replacement** → `content/avby.js`
-- **Alarm scheduling** → `background.js:ensureAlarm`
-- **Popup rendering** → `popup/popup.js:render`, `renderRates`, `renderConverter`
-- **Test fixtures** → `examples/nbrb_response.json` (real API snapshot)
-- **Build commands** → `Makefile`
+- **Where is currency conversion math?** `lib/rates.js` (canonical) and duplicated in `content/avby.js`.
+- **Where is the NBRB API called?** Only in `background.js:10-69`.
+- **Where are DOM prices replaced?** Only in `content/avby.js`.
+- **Where is the popup logic?** `popup/popup.js`.
+- **Where are test fixtures?** `examples/`.
 
 ## 4. Life of a Request / Primary Data Flow
 
-**Data refresh path (background-initiated):**
+**Rate refresh cycle:**
 
-```
-browser startup / alarm fire (every 4h)
-  → background.js event listener
-    → fetchRates() with AbortController timeout
-      → fetch('https://api.nbrb.by/exrates/rates?periodicity=0')
-        → parseRates() from lib/rates.js
-          → validate all 3 currencies present
-            → browser.storage.local.set({ ratesData, lastError })
-```
+1. Browser fires `onInstalled` or `onStartup` event, or the 240-minute alarm fires (`background.js:80-94`).
+2. `fetchRates()` in `background.js:10-69` calls `fetch(API_URL)` with a 10-second timeout.
+3. The JSON response is passed to `parseRates()` in `lib/rates.js:7-27`, which extracts USD, EUR, RUB (validating all three are present).
+4. On success, rates are written to `browser.storage.local` under the `ratesData` key; `lastError` is cleared (`background.js:36-46`).
+5. On failure, only `lastError` is updated — existing `ratesData` is never overwritten (`background.js:49-60`).
 
-**User interaction path (popup):**
+**AV.by price replacement:**
 
-```
-user clicks toolbar icon
-  → popup.html loads → popup.js DOMContentLoaded
-    → browser.runtime.sendMessage({ action: 'getRates' })
-      → background reads browser.storage.local → returns { ratesData, lastError }
-        → popup renders rates table, converter, status, timestamp
-          → user changes converter input → local recalculation via convert()
-          → user clicks "Обновить" → sendMessage({ action: 'refreshRates' })
-            → background fetchRates({ force: true }) → popup re-renders
-```
+1. Content script initializes on `document_idle` (`manifest.json:29`), reads `ratesData` and `selectedCurrency` from `browser.storage.local` (`content/avby.js:411-425`).
+2. If `ratesData` is missing, sends `ensureRates` message to background (`content/avby.js:379-391`), which triggers a fetch and returns the result via storage change.
+3. `applyAll()` (`content/avby.js:279-303`) collects price elements via CSS selectors, parses the BYN amount from their text, converts with `convertFromBYN()`, and replaces `textContent`.
+4. A `MutationObserver` on `document.body` (`content/avby.js:317-377`) watches for dynamically added nodes (infinite scroll, SPA navigation) and schedules `applyAll()` via `requestAnimationFrame`.
+5. Monthly-payment text nodes ("… BYN в месяц") are tracked in a `WeakMap` with original text preserved, and reprocessed on currency or rate changes.
 
-**Offline resilience:** if `fetchRates` fails, `lastError` is stored but previous `ratesData` is preserved. Popup detects `lastError` and shows a warning alongside cached rates (`Observed`: `background.js` catch block, `popup.js` render logic).
+**Popup data flow:**
 
-**AV.by price replacement path:**
-
-```
-user selects display currency in popup
-  → popup stores selectedCurrency in browser.storage.local
-    → content/avby.js receives storage change or reads storage on page load
-      → finds known AV.by price elements and monthly-payment text
-        → preserves original BYN text in dataset/WeakMap
-          → converts BYN to selected currency using cached NBRB rates
-            → replaces page text with formatted selected-currency price
-```
+1. On `DOMContentLoaded`, popup sends `getRates` message to background (`popup/popup.js:114`).
+2. Background responds from `browser.storage.local` (`background.js:115-118`).
+3. Popup renders rates, converter result, and status using functions from `lib/rates.js`.
+4. "Refresh" button sends `refreshRates` message, which triggers `fetchRates({ force: true })` in background (`background.js:110-113`).
+5. Display-currency selector writes to `browser.storage.local`; the content script's storage listener picks up the change (`content/avby.js:393-409`).
 
 ## 5. Architectural Invariants & Constraints
 
-- **Rule:** `lib/rates.js` must not import or reference any browser API (`browser.*`, `document`, `fetch`, `window`).
-  - **Rationale:** Keeps the shared logic testable in plain Node.js without mocks or polyfills.
-  - **Enforcement / Signals (Inferred):** No browser globals in the file; vitest runs coverage against it with 100% pass rate and no setup/teardown.
+- **Rule:** `lib/rates.js` must have zero browser or Node API dependencies.
+  - **Rationale:** Keeps business logic testable in plain Vitest without mocks or polyfills.
+  - **Enforcement / Signals (Observed):** No `browser.*`, `document`, `fetch`, `window`, or Node built-in references in the file. Vitest imports it directly in `tests/parse.test.js`. `vitest.config.js:10` restricts coverage to `lib/**/*.js`.
 
-- **Rule:** All network requests go through `background.js` only; popup never calls `fetch`.
-  - **Rationale:** Centralizes network access and error handling; popup works with cached data when offline.
-  - **Enforcement / Signals (Observed):** No `fetch` calls in `popup/popup.js`; popup requests data via `browser.runtime.sendMessage`.
-
-- **Rule:** Popup must use `textContent` for all dynamic content, never `innerHTML`.
-  - **Rationale:** Prevents XSS from malformed API responses.
-  - **Enforcement / Signals (Observed):** All DOM assignments in `popup/popup.js` use `textContent` or `className`.
-
-- **Rule:** No remote code execution — no CDN scripts and no inline script handlers.
-  - **Rationale:** Content Security Policy compliance for Firefox extensions.
-  - **Enforcement / Signals (Observed):** `popup.html` has no inline event handlers; no `content_security_policy` override in manifest; `web-ext lint` passes with 0 errors.
-
-- **Rule:** Test coverage for `lib/` must not fall below 80% on any metric (lines, functions, branches, statements).
-  - **Rationale:** The shared library contains all financial calculations and API response parsing — correctness is critical.
-  - **Enforcement / Signals (Observed):** `vitest.config.js` thresholds block CI on regression; current coverage is 100%.
-
-- **Rule:** Background and popup communicate only via `browser.runtime.sendMessage`, never by direct import.
-  - **Rationale:** Matches WebExtension lifecycle — background and popup are separate execution contexts with independent lifetimes.
-  - **Enforcement / Signals (Observed):** `background.js` registers `onMessage` listener; `popup.js` uses `sendMessage`; no cross-directory imports between them.
-
-- **Rule:** Host permissions are limited to the NBRB API and AV.by pages.
-  - **Rationale:** Principle of least privilege; the extension only needs rates from NBRB and DOM access on AV.by.
-  - **Enforcement / Signals (Observed):** `manifest.json` `host_permissions` contains `https://api.nbrb.by/*`, `https://av.by/*`, and `https://*.av.by/*`.
+- **Rule:** All network fetches live in `background.js` only.
+  - **Rationale:** Single point of control for rate fetching, error handling, and caching policy.
+  - **Enforcement / Signals (Observed):** Only `background.js` contains `fetch()` calls. Popup uses `browser.runtime.sendMessage` (`popup/popup.js:114,120`). Content script uses `browser.storage.local` and one `ensureRates` message (`content/avby.js:379-391`).
 
 - **Rule:** Failed API responses must not overwrite previously stored valid rates.
-  - **Rationale:** Graceful degradation — users see last-known rates during network issues.
-  - **Enforcement / Signals (Observed):** `background.js` catch block sets `lastError` without modifying `ratesData`.
+  - **Rationale:** Offline resilience — users see last-known-good rates when the API is down.
+  - **Enforcement / Signals (Observed):** `background.js:49-60` writes only `lastError` on failure; `ratesData` is untouched. `AGENTS.md:38` documents this rule.
 
-## 6. Android Considerations
+- **Rule:** Popup and background communicate only via `browser.runtime.sendMessage`.
+  - **Rationale:** Extension architecture boundary — no shared JS scope between popup and background.
+  - **Enforcement / Signals (Observed):** Popup never imports from `background.js`. All data flows through message actions (`getRates`, `refreshRates`, `ensureRates`).
 
-- Popup layout must remain responsive because Android surfaces extension UI in a constrained mobile container (`Observed`: `popup/popup.html` has viewport meta, `popup/popup.css` uses responsive width and 44px controls).
-- AV.by content script is optimized to avoid full-page text rescans on each mutation. It tracks monthly-payment text nodes and processes newly added/mutated subtrees (`Observed`: `content/avby.js` with `trackedMonthlyNodes` and `pendingMonthlyNodes`).
-- Mobile lifecycle can be more aggressive about background suspension, so content script can request rate initialization via runtime messaging when storage is empty (`Observed`: `content/avby.js` sends `ensureRates`, `background.js` handles it).
-- Android test flow is codified in build tooling (`Observed`: `Makefile` targets `run-android`, `run-android-nightly`, `android-log`).
+- **Rule:** `content/avby.js` must be a self-contained IIFE with no ES module imports.
+  - **Rationale:** MV3 content scripts run in an isolated world without module support.
+  - **Enforcement / Signals (Observed):** The file wraps everything in `(function initAvByCurrencyConversion() { ... })();`. `manifest.json:28` loads it as plain JS, not as a module.
 
-## 7. Documentation Strategy
+- **Rule:** Three functions (`parseBynPrice`, `convertFromBYN`, `formatDisplayPrice`) must be kept in sync between `lib/rates.js` and `content/avby.js`.
+  - **Rationale:** The content script cannot import from `lib/`, so logic is duplicated. Divergence causes conversion bugs on AV.by pages.
+  - **Enforcement / Signals (Observed):** Convention documented in `AGENTS.md:32,42`. Both test suites (`tests/parse.test.js`, `tests/content.test.js`) independently verify the duplicated logic. No automated sync check exists (`Inferred`).
 
-`ARCHITECTURE.md` (this file) is the global map of the repository: component boundaries, data flow, invariants, and the code map.
+- **Rule:** No `innerHTML` assignments — only `textContent` for DOM writes.
+  - **Rationale:** XSS prevention on untrusted page DOM.
+  - **Enforcement / Signals (Observed):** All DOM writes in `content/avby.js` and `popup/popup.js` use `textContent` or `nodeValue`. Documented in `AGENTS.md:29`.
 
-Repository-level documentation includes `README.md` (user-facing behavior, module descriptions, and Android test steps) and `AGENTS.md` (agent constraints and invariants).
+- **Rule:** Test coverage for `lib/` must stay at or above 80% on all metrics.
+  - **Rationale:** The pure-logic module is the canonical source for conversion and formatting.
+  - **Enforcement / Signals (Observed):** `vitest.config.js:11-16` sets thresholds for lines, functions, branches, and statements. `make test` in `Makefile:10-11` runs coverage.
 
-What belongs where:
+- **Rule:** Host permissions are limited to `https://api.nbrb.by/*` and `https://av.by/*` (including subdomains).
+  - **Rationale:** Minimal privilege principle for a browser extension.
+  - **Enforcement / Signals (Observed):** Declared in `manifest.json:7-11`. `AGENTS.md:40` forbids adding more without justification.
 
-- **Global (this file):** component model, dependency direction, invariants, data flow, physical layout.
-- **Local/module docs (if added):** API response shape details, popup UI behavior specifics, build/deploy instructions. These would live alongside the relevant files (e.g., `popup/README.md`, `lib/README.md`).
+- **Rule:** Original BYN price text must be preserved for restoration when the user switches back to BYN.
+  - **Rationale:** Without preservation, converting back to BYN would lose the original formatted price.
+  - **Enforcement / Signals (Observed):** Content script stores original text in `data-*` attributes on elements (`content/avby.js:31-32,101-106`) and in `WeakMap` entries for monthly-payment text nodes (`content/avby.js:34,168`).
 
-The `Makefile` doubles as runnable documentation for the available development commands (`test`, `lint`, `build`, `format`, `run`, `run-android`, `run-android-nightly`, `android-log`, `clean`). The `examples/nbrb_response.json` fixture documents the expected NBRB API response shape for test purposes.
+## 6. Documentation Strategy
+
+- `ARCHITECTURE.md` (this file) — global map: component model, data flow, invariants, and physical layout. Start here for "where is X?" and "what must not change?".
+- `AGENTS.md` — contributor-facing rules: change rules, validation commands, repository-specific gotchas, and module-level boundaries. The authoritative reference for what developers must preserve when editing code.
+- `README.md` — user-facing and developer onboarding: features, usage instructions, development setup, build commands, and release process.
+- `content/AGENTS.md` — local rules for the content script: DOM handling constraints, selector management, and testing guidance.
+- `tests/AGENTS.md` — local rules for the test suite.
+
+Global architecture docs cover component boundaries, data flow, and cross-cutting invariants. Local `AGENTS.md` files cover module-specific change rules, safety constraints, and nearby documentation references. Module-level `README.md` files are absent — each module is small enough that `AGENTS.md` and inline code suffice.
