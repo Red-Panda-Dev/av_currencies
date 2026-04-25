@@ -131,11 +131,62 @@ npm run format:check
 make run
 ```
 
+Запустить расширение в Firefox для Android (через `web-ext`):
+
+```bash
+make run-android
+```
+
+Запустить расширение в Firefox Nightly для Android (`org.mozilla.fenix`):
+
+```bash
+make run-android-nightly
+```
+
+Если подключено несколько Android-устройств:
+
+```bash
+ADB_DEVICE=<device-id> make run-android-nightly
+```
+
+Логи расширения на Android (фильтр по ID расширения):
+
+```bash
+make android-log
+```
+
 Собрать архив расширения:
 
 ```bash
 make build
 ```
+
+## Тестирование на Firefox для Android
+
+1. Установите Android SDK Platform Tools и убедитесь, что `adb` доступен в `PATH`.
+2. Включите на устройстве Android `Developer options` и `USB debugging`.
+3. Подключите устройство и проверьте его видимость:
+
+   ```bash
+   adb devices
+   ```
+
+4. Установите подходящий Firefox для Android:
+   - Nightly: пакет `org.mozilla.fenix`.
+5. Запустите расширение:
+
+   ```bash
+   web-ext run -t firefox-android --firefox-apk org.mozilla.fenix
+   ```
+
+6. Для отладки откройте `about:debugging` в Firefox Desktop и подключите Android-устройство.
+7. Для диагностики ошибок манифеста и runtime используйте:
+
+   ```bash
+   adb logcat | grep av-by-currencies@redpandadev
+   ```
+
+Примечание: для загрузки временного расширения в Firefox Android должна быть открыта хотя бы одна вкладка браузера.
 
 ## Релиз
 

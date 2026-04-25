@@ -55,8 +55,8 @@ av_currencies/
 │   └── content.test.js    Vitest + jsdom tests for AV.by content script
 ├── examples/              Saved AV.by/NBRB fixtures for tests
 ├── vitest.config.js       Test runner config: coverage on lib/, 80% threshold
-├── Makefile               Build orchestration: test, lint, format, build, run, clean
-└── package.json           Dev dependencies only: vitest, @vitest/coverage-v8, prettier
+├── Makefile               Build orchestration: test, lint, format, build, run, Android run/log, clean
+└── package.json           Dev dependencies only: vitest, @vitest/coverage-v8, jsdom, prettier
 ```
 
 Where is X?
@@ -67,7 +67,7 @@ Where is X?
 - **AV.by price replacement** → `content/avby.js`
 - **Alarm scheduling** → `background.js:ensureAlarm`
 - **Popup rendering** → `popup/popup.js:render`, `renderRates`, `renderConverter`
-- **Test fixtures** → `nbrb_reponse.json` (real API snapshot)
+- **Test fixtures** → `examples/nbrb_response.json` (real API snapshot)
 - **Build commands** → `Makefile`
 
 ## 4. Life of a Request / Primary Data Flow
@@ -145,15 +145,22 @@ user selects display currency in popup
   - **Rationale:** Graceful degradation — users see last-known rates during network issues.
   - **Enforcement / Signals (Observed):** `background.js` catch block sets `lastError` without modifying `ratesData`.
 
-## 6. Documentation Strategy
+## 6. Android Considerations
+
+- Popup layout must remain responsive because Android surfaces extension UI in a constrained mobile container (`Observed`: `popup/popup.html` has viewport meta, `popup/popup.css` uses responsive width and 44px controls).
+- AV.by content script is optimized to avoid full-page text rescans on each mutation. It tracks monthly-payment text nodes and processes newly added/mutated subtrees (`Observed`: `content/avby.js` with `trackedMonthlyNodes` and `pendingMonthlyNodes`).
+- Mobile lifecycle can be more aggressive about background suspension, so content script can request rate initialization via runtime messaging when storage is empty (`Observed`: `content/avby.js` sends `ensureRates`, `background.js` handles it).
+- Android test flow is codified in build tooling (`Observed`: `Makefile` targets `run-android`, `run-android-nightly`, `android-log`).
+
+## 7. Documentation Strategy
 
 `ARCHITECTURE.md` (this file) is the global map of the repository: component boundaries, data flow, invariants, and the code map.
 
-Module-level and local documentation is currently absent — there are no `AGENTS.md`, `README.md`, or per-directory documentation files in this repository (`Observed`).
+Repository-level documentation includes `README.md` (user-facing behavior, module descriptions, and Android test steps) and `AGENTS.md` (agent constraints and invariants).
 
 What belongs where:
 
 - **Global (this file):** component model, dependency direction, invariants, data flow, physical layout.
 - **Local/module docs (if added):** API response shape details, popup UI behavior specifics, build/deploy instructions. These would live alongside the relevant files (e.g., `popup/README.md`, `lib/README.md`).
 
-The `Makefile` doubles as runnable documentation for the available development commands (`test`, `lint`, `build`, `format`, `run`, `clean`). The `nbrb_reponse.json` fixture documents the expected NBRB API response shape for test purposes.
+The `Makefile` doubles as runnable documentation for the available development commands (`test`, `lint`, `build`, `format`, `run`, `run-android`, `run-android-nightly`, `android-log`, `clean`). The `examples/nbrb_response.json` fixture documents the expected NBRB API response shape for test purposes.
