@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Курсы валют НБРБ",
+  "version": "1.0.0",
+  "description": "Курсы USD, EUR и RUB к BYN по данным Национального банка Республики Беларусь.",
+  "permissions": ["alarms", "storage"],
+  "host_permissions": [
+    "https://api.nbrb.by/*",
+    "https://av.by/*",
+    "https://*.av.by/*"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Курсы валют НБРБ",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://av.by/*", "https://*.av.by/*"],
+      "js": ["content/avby.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "av-currencies@redpandadev.local",
+      "strict_min_version": "121.0"
+    }
+  }
+}
