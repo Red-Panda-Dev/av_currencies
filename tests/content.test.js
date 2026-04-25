@@ -8,6 +8,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(__dirname, "..", "content", "avby.js");
 const indexFixturePath = join(__dirname, "..", "examples", "index.html");
 const autoCardFixturePath = join(__dirname, "..", "examples", "auto_card.html");
+const newCarsListFixturePath = join(
+  __dirname,
+  "..",
+  "examples",
+  "new_cars_list.html",
+);
+const newCarPageFixturePath = join(
+  __dirname,
+  "..",
+  "examples",
+  "new_car_page.html",
+);
 const partsListFixturePath = join(
   __dirname,
   "..",
@@ -18,6 +30,8 @@ const partsListFixturePath = join(
 const contentScriptSource = readFileSync(scriptPath, "utf-8");
 const indexFixture = readFileSync(indexFixturePath, "utf-8");
 const autoCardFixture = readFileSync(autoCardFixturePath, "utf-8");
+const newCarsListFixture = readFileSync(newCarsListFixturePath, "utf-8");
+const newCarPageFixture = readFileSync(newCarPageFixturePath, "utf-8");
 const partsListFixture = readFileSync(partsListFixturePath, "utf-8");
 
 const sampleRates = {
@@ -233,6 +247,78 @@ describe("av.by content script", () => {
     }
   });
 
+  it("converts new car listing prices and restores their original BYN text", async () => {
+    const env = await bootstrapContentScript(newCarsListFixture, {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const bannerPrice = env.dom.window.document.querySelector(
+        ".salon-listing-model__banner-priсe",
+      );
+      expect(bannerPrice).not.toBeNull();
+      expect(bannerPrice.textContent).toMatch(/^от\s/);
+      expect(bannerPrice.textContent).toContain("$");
+      expect(bannerPrice.dataset.avCurrenciesOriginalText).toContain("р.");
+
+      const listPrices = [
+        ...env.dom.window.document.querySelectorAll(
+          ".salon-listing-items__item-price-byn",
+        ),
+      ];
+      expect(listPrices.length).toBeGreaterThan(0);
+      for (const price of listPrices) {
+        expect(price.textContent).toContain("$");
+        expect(price.dataset.avCurrenciesOriginalText).toMatch(/[рp]\./i);
+      }
+
+      const originalBannerText = bannerPrice.dataset.avCurrenciesOriginalText;
+      const originalListTexts = listPrices.map(
+        (price) => price.dataset.avCurrenciesOriginalText,
+      );
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(bannerPrice.textContent).toBe(originalBannerText);
+      for (const [index, price] of listPrices.entries()) {
+        expect(price.textContent).toBe(originalListTexts[index]);
+      }
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts new car detail price and restores its original BYN text", async () => {
+    const env = await bootstrapContentScript(newCarPageFixture, {
+      ratesData: sampleRates,
+      selectedCurrency: "EUR",
+    });
+
+    try {
+      const cardPrice = env.dom.window.document.querySelector(
+        ".salon-card__price-primary",
+      );
+      expect(cardPrice).not.toBeNull();
+      expect(cardPrice.textContent).toContain("€");
+      expect(cardPrice.dataset.avCurrenciesOriginalText).toMatch(/[рp]\./i);
+
+      const originalText = cardPrice.dataset.avCurrenciesOriginalText;
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(cardPrice.textContent).toBe(originalText);
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("converts detail page prices and monthly payment text", async () => {
     const env = await bootstrapContentScript(autoCardFixture, {
       ratesData: sampleRates,
@@ -403,6 +489,32 @@ describe("av.by content script", () => {
 
       expect(dynamicPartsPrice.textContent).toContain("$");
       expect(dynamicPartsPrice.dataset.avCurrenciesOriginalText).toBe("360 р.");
+
+      const dynamicNewCarListPrice =
+        env.dom.window.document.createElement("div");
+      dynamicNewCarListPrice.className = "salon-listing-items__item-price-byn";
+      dynamicNewCarListPrice.textContent = "81 458 p.";
+      env.dom.window.document.body.append(dynamicNewCarListPrice);
+
+      await flushTicks();
+
+      expect(dynamicNewCarListPrice.textContent).toContain("$");
+      expect(dynamicNewCarListPrice.dataset.avCurrenciesOriginalText).toBe(
+        "81 458 p.",
+      );
+
+      const dynamicNewCarDetailPrice =
+        env.dom.window.document.createElement("div");
+      dynamicNewCarDetailPrice.className = "salon-card__price-primary";
+      dynamicNewCarDetailPrice.textContent = "92 732 p.";
+      env.dom.window.document.body.append(dynamicNewCarDetailPrice);
+
+      await flushTicks();
+
+      expect(dynamicNewCarDetailPrice.textContent).toContain("$");
+      expect(dynamicNewCarDetailPrice.dataset.avCurrenciesOriginalText).toBe(
+        "92 732 p.",
+      );
 
       const dynamicCommercial = env.dom.window.document.createElement("span");
       dynamicCommercial.className = "card__commercial-text";
