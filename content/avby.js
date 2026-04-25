@@ -17,6 +17,12 @@
     ".featured__price-value strong",
     ".salon-listing-top__prices > div",
   ];
+  const MONTHLY_ELEMENT_SELECTORS = [
+    ".card__commercial-text > span:last-child",
+    ".finance-item__subtitle",
+  ];
+  const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
+  const SALON_SUFFIX_SELECTOR = "span:last-child";
 
   const MONTHLY_REGEX =
     /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN(\s*в\s*месяц)/i;
@@ -82,14 +88,14 @@
     return Boolean(getRateInfo(selectedCurrency));
   }
 
-  function collectPriceElements() {
+  function collectElementsBySelectors(selectors) {
     if (!document || typeof document.querySelectorAll !== "function") {
       return [];
     }
 
     const elements = new Set();
 
-    for (const selector of PRICE_SELECTORS) {
+    for (const selector of selectors) {
       const list = document.querySelectorAll(selector);
       for (const element of list) {
         elements.add(element);
@@ -97,6 +103,14 @@
     }
 
     return [...elements];
+  }
+
+  function collectPriceElements() {
+    return collectElementsBySelectors(PRICE_SELECTORS);
+  }
+
+  function collectMonthlyElements() {
+    return collectElementsBySelectors(MONTHLY_ELEMENT_SELECTORS);
   }
 
   function getOriginalElementText(element) {
@@ -146,6 +160,78 @@
       nextText = formatDisplayPrice(converted, selectedCurrency);
       if (element.textContent !== nextText) {
         element.textContent = nextText;
+      }
+    }
+  }
+
+  function applyMonthlyElementPrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (!canConvert || !rateInfo) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const match = originalText.match(MONTHLY_REGEX);
+      if (!match) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const bynAmount = getElementBynAmount(element, originalText);
+      if (bynAmount === null) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const converted = convertFromBYN(bynAmount, rateInfo);
+      const replacement = `${formatDisplayPrice(converted, selectedCurrency)}${match[2]}`;
+      nextText = originalText.replace(MONTHLY_REGEX, replacement);
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
+  function isBynSuffixText(value) {
+    if (typeof value !== "string") return false;
+
+    const normalized = value.replace(/[\s\u00A0\u202F]/g, "").toLowerCase();
+    return normalized === "р." || normalized === "р" || normalized === "p.";
+  }
+
+  function applySalonPriceSuffixes() {
+    if (!document || typeof document.querySelectorAll !== "function") {
+      return;
+    }
+
+    const canConvert = shouldConvertPrices();
+    const wrappers = document.querySelectorAll(SALON_PRICE_WRAPPER_SELECTOR);
+
+    for (const wrapper of wrappers) {
+      const suffixElement = wrapper.querySelector(SALON_SUFFIX_SELECTOR);
+      if (!suffixElement) continue;
+
+      const originalSuffix = getOriginalElementText(suffixElement);
+      let nextSuffix = originalSuffix;
+
+      if (canConvert && isBynSuffixText(originalSuffix)) {
+        nextSuffix = "";
+      }
+
+      if (suffixElement.textContent !== nextSuffix) {
+        suffixElement.textContent = nextSuffix;
       }
     }
   }
@@ -293,6 +379,11 @@
     const elements = collectPriceElements();
     applyElementPrices(elements);
 
+    const monthlyElements = collectMonthlyElements();
+    applyMonthlyElementPrices(monthlyElements);
+
+    applySalonPriceSuffixes();
+
     pruneDisconnectedMonthlyNodes();
 
     for (const node of pendingMonthlyNodes) {
@@ -321,19 +412,31 @@
     const root = document.body || document.documentElement;
     if (!root) return;
 
-    function isInPriceElement(node) {
+    function isInElementMatchingSelectors(node, selectors) {
       const parentElement = node?.parentElement;
       if (!parentElement || typeof parentElement.closest !== "function") {
         return false;
       }
 
-      for (const selector of PRICE_SELECTORS) {
+      for (const selector of selectors) {
         if (parentElement.closest(selector)) {
           return true;
         }
       }
 
       return false;
+    }
+
+    function isInPriceElement(node) {
+      return isInElementMatchingSelectors(node, PRICE_SELECTORS);
+    }
+
+    function isInMonthlyElement(node) {
+      return isInElementMatchingSelectors(node, MONTHLY_ELEMENT_SELECTORS);
+    }
+
+    function isInSalonWrapper(node) {
+      return isInElementMatchingSelectors(node, [SALON_PRICE_WRAPPER_SELECTOR]);
     }
 
     const observer = new MutationObserver((mutations) => {
@@ -347,7 +450,11 @@
             continue;
           }
 
-          if (isInPriceElement(mutation.target)) {
+          if (
+            isInPriceElement(mutation.target) ||
+            isInMonthlyElement(mutation.target) ||
+            isInSalonWrapper(mutation.target)
+          ) {
             shouldApply = true;
           }
           continue;

@@ -176,6 +176,26 @@ describe("av.by content script", () => {
         ".salon-listing-top__prices",
       );
       expect(salonWrapper.textContent).toContain("от");
+
+      const salonWrappers = [
+        ...env.dom.window.document.querySelectorAll(
+          ".salon-listing-top__prices",
+        ),
+      ];
+      expect(salonWrappers.length).toBeGreaterThan(0);
+      for (const wrapper of salonWrappers) {
+        expect(wrapper.textContent).toContain("$");
+        expect(wrapper.textContent).not.toMatch(/[рp]\./i);
+      }
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      for (const wrapper of salonWrappers) {
+        expect(wrapper.textContent).toMatch(/[рp]\./i);
+      }
     } finally {
       env.cleanup();
     }
@@ -229,10 +249,26 @@ describe("av.by content script", () => {
       const featuredPrice = env.dom.window.document.querySelector(
         ".featured__price-value strong",
       );
+      const cardCommercialMonthly = env.dom.window.document.querySelector(
+        ".card__commercial-text > span:last-child",
+      );
+      const financeItemMonthly = env.dom.window.document.querySelector(
+        ".finance-item__subtitle",
+      );
+      const sideFinanceMonthly = env.dom.window.document.querySelector(
+        ".side-finance__lead",
+      );
 
       expect(cardPrice.textContent).toContain("€");
       expect(similarPrice.textContent).toContain("€");
       expect(featuredPrice.textContent).toContain("€");
+      expect(cardCommercialMonthly.textContent).toContain("€");
+      expect(cardCommercialMonthly.textContent).toContain("в");
+      expect(cardCommercialMonthly.textContent).not.toContain("BYN");
+      expect(financeItemMonthly.textContent).toContain("€");
+      expect(financeItemMonthly.textContent).toContain("в");
+      expect(financeItemMonthly.textContent).not.toContain("BYN");
+      expect(sideFinanceMonthly.textContent).toContain("€ в месяц");
 
       const monthlyNode = env.dom.window.document.createElement("div");
       monthlyNode.textContent = "1386 BYN в месяц";
@@ -240,6 +276,22 @@ describe("av.by content script", () => {
 
       await flushTicks();
       expect(monthlyNode.textContent).toContain("€ в месяц");
+
+      const originalCardCommercialMonthly =
+        cardCommercialMonthly.dataset.avCurrenciesOriginalText;
+      const originalFinanceItemMonthly =
+        financeItemMonthly.dataset.avCurrenciesOriginalText;
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(cardCommercialMonthly.textContent).toBe(
+        originalCardCommercialMonthly,
+      );
+      expect(financeItemMonthly.textContent).toBe(originalFinanceItemMonthly);
+      expect(sideFinanceMonthly.textContent).toBe("1386 BYN в месяц");
     } finally {
       env.cleanup();
     }
@@ -337,6 +389,38 @@ describe("av.by content script", () => {
 
       expect(dynamicPartsPrice.textContent).toContain("$");
       expect(dynamicPartsPrice.dataset.avCurrenciesOriginalText).toBe("360 р.");
+
+      const dynamicCommercial = env.dom.window.document.createElement("span");
+      dynamicCommercial.className = "card__commercial-text";
+
+      const dynamicCommercialTitle =
+        env.dom.window.document.createElement("span");
+      dynamicCommercialTitle.textContent = "В лизинг";
+
+      const dynamicCommercialMonthly =
+        env.dom.window.document.createElement("span");
+      dynamicCommercialMonthly.textContent = "1386 BYN в месяц";
+
+      dynamicCommercial.append(
+        dynamicCommercialTitle,
+        dynamicCommercialMonthly,
+      );
+      env.dom.window.document.body.append(dynamicCommercial);
+
+      await flushTicks();
+
+      expect(dynamicCommercialMonthly.textContent).toContain("$");
+      expect(dynamicCommercialMonthly.textContent).toContain("в месяц");
+      expect(dynamicCommercialMonthly.dataset.avCurrenciesOriginalText).toBe(
+        "1386 BYN в месяц",
+      );
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(dynamicCommercialMonthly.textContent).toBe("1386 BYN в месяц");
     } finally {
       env.cleanup();
     }
