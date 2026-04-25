@@ -8,10 +8,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(__dirname, "..", "content", "avby.js");
 const indexFixturePath = join(__dirname, "..", "examples", "index.html");
 const autoCardFixturePath = join(__dirname, "..", "examples", "auto_card.html");
+const partsListFixturePath = join(
+  __dirname,
+  "..",
+  "examples",
+  "parts_list.html",
+);
 
 const contentScriptSource = readFileSync(scriptPath, "utf-8");
 const indexFixture = readFileSync(indexFixturePath, "utf-8");
 const autoCardFixture = readFileSync(autoCardFixturePath, "utf-8");
+const partsListFixture = readFileSync(partsListFixturePath, "utf-8");
 
 const sampleRates = {
   rates: {
@@ -174,6 +181,38 @@ describe("av.by content script", () => {
     }
   });
 
+  it("converts parts list prices and restores their original BYN text", async () => {
+    const env = await bootstrapContentScript(partsListFixture, {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const partsPrice = env.dom.window.document.querySelector(
+        ".listing-item__price-primary",
+      );
+      expect(partsPrice).not.toBeNull();
+      expect(partsPrice.textContent).toContain("$");
+      expect(partsPrice.dataset.avCurrenciesOriginalText).toContain("р.");
+
+      const featuredPartsPrice = env.dom.window.document.querySelector(
+        ".listing-top__price-primary",
+      );
+      expect(featuredPartsPrice).not.toBeNull();
+      expect(featuredPartsPrice.textContent).toContain("$");
+
+      const originalPartsText = partsPrice.dataset.avCurrenciesOriginalText;
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(partsPrice.textContent).toBe(originalPartsText);
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("converts detail page prices and monthly payment text", async () => {
     const env = await bootstrapContentScript(autoCardFixture, {
       ratesData: sampleRates,
@@ -288,6 +327,16 @@ describe("av.by content script", () => {
 
       expect(dynamicPrice.textContent).toContain("$");
       expect(dynamicPrice.dataset.avCurrenciesOriginalText).toBe("72 990 р.");
+
+      const dynamicPartsPrice = env.dom.window.document.createElement("div");
+      dynamicPartsPrice.className = "listing-item__price-primary";
+      dynamicPartsPrice.textContent = "360 р.";
+      env.dom.window.document.body.append(dynamicPartsPrice);
+
+      await flushTicks();
+
+      expect(dynamicPartsPrice.textContent).toContain("$");
+      expect(dynamicPartsPrice.dataset.avCurrenciesOriginalText).toBe("360 р.");
     } finally {
       env.cleanup();
     }

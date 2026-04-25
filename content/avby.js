@@ -11,6 +11,7 @@
 
   const PRICE_SELECTORS = [
     ".listing-index__price",
+    ".listing-item__price-primary",
     ".card__price-button",
     ".listing-top__price-primary",
     ".featured__price-value strong",
