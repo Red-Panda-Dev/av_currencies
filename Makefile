@@ -1,8 +1,11 @@
-.PHONY: test lint build clean run format format-check test-coverage
+.PHONY: test lint build clean run run-android run-android-nightly android-log format format-check test-coverage
 
 EXT_DIR := .
 BUILD_DIR := build
 EXT_NAME := av-currencies
+EXT_ID := av-by-currencies@redpandadev
+ANDROID_APK ?= org.mozilla.fenix
+ADB_DEVICE ?=
 
 test:
 	npm run test:coverage
@@ -33,3 +36,12 @@ clean:
 
 run: lint
 	npx web-ext run --source-dir $(EXT_DIR) --target firefox-desktop
+
+run-android: lint
+	npx web-ext run --source-dir $(EXT_DIR) --target firefox-android $(if $(ADB_DEVICE),--adb-device $(ADB_DEVICE),)
+
+run-android-nightly: lint
+	npx web-ext run --source-dir $(EXT_DIR) --target firefox-android --firefox-apk $(ANDROID_APK) $(if $(ADB_DEVICE),--adb-device $(ADB_DEVICE),)
+
+android-log:
+	adb logcat | grep --line-buffered $(EXT_ID)
