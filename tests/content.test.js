@@ -21,12 +21,15 @@ const sampleRates = {
   },
 };
 
-function createBrowserMock(initialState = {}) {
+function createBrowserMock(initialState = {}, options = {}) {
   const state = { ...initialState };
   const listeners = [];
+  const runtimeMessages = [];
+  const ensureRatesResponse = options.ensureRatesResponse;
 
   return {
     state,
+    runtimeMessages,
     browser: {
       storage: {
         local: {
@@ -69,6 +72,24 @@ function createBrowserMock(initialState = {}) {
           },
         },
       },
+      runtime: {
+        async sendMessage(message) {
+          runtimeMessages.push(message);
+
+          if (message?.action === "ensureRates") {
+            if (ensureRatesResponse) {
+              return ensureRatesResponse;
+            }
+
+            return {
+              ratesData: state.ratesData || null,
+              lastError: state.lastError || null,
+            };
+          }
+
+          return null;
+        },
+      },
     },
   };
 }
@@ -79,13 +100,13 @@ async function flushTicks(count = 4) {
   }
 }
 
-async function bootstrapContentScript(html, initialState) {
+async function bootstrapContentScript(html, initialState, options = {}) {
   const dom = new JSDOM(html, {
     url: "https://av.by/",
     runScripts: "outside-only",
   });
 
-  const browserMock = createBrowserMock(initialState);
+  const browserMock = createBrowserMock(initialState, options);
   const { window } = dom;
 
   window.requestAnimationFrame = (callback) => setTimeout(callback, 0);
@@ -246,6 +267,81 @@ describe("av.by content script", () => {
         ".listing-index__price",
       );
       expect(listingPrice.textContent).toContain("р.");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts prices for dynamically added listing nodes", async () => {
+    const env = await bootstrapContentScript("<html><body></body></html>", {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const dynamicPrice = env.dom.window.document.createElement("div");
+      dynamicPrice.className = "listing-index__price";
+      dynamicPrice.textContent = "72 990 р.";
+      env.dom.window.document.body.append(dynamicPrice);
+
+      await flushTicks();
+
+      expect(dynamicPrice.textContent).toContain("$");
+      expect(dynamicPrice.dataset.avCurrenciesOriginalText).toBe("72 990 р.");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("restores monthly text after switching back to BYN", async () => {
+    const env = await bootstrapContentScript("<html><body></body></html>", {
+      ratesData: sampleRates,
+      selectedCurrency: "EUR",
+    });
+
+    try {
+      const monthlyNode = env.dom.window.document.createElement("div");
+      monthlyNode.textContent = "1386 BYN в месяц";
+      env.dom.window.document.body.append(monthlyNode);
+
+      await flushTicks();
+      expect(monthlyNode.textContent).toContain("€ в месяц");
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(monthlyNode.textContent).toBe("1386 BYN в месяц");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("requests missing rates from background via ensureRates", async () => {
+    const env = await bootstrapContentScript(
+      "<html><body><div class='listing-index__price'>72 990 р.</div></body></html>",
+      {
+        selectedCurrency: "USD",
+      },
+      {
+        ensureRatesResponse: {
+          ratesData: sampleRates,
+          lastError: null,
+        },
+      },
+    );
+
+    try {
+      await flushTicks(6);
+
+      const listingPrice = env.dom.window.document.querySelector(
+        ".listing-index__price",
+      );
+      expect(listingPrice.textContent).toContain("$");
+      expect(env.browserMock.runtimeMessages).toContainEqual({
+        action: "ensureRates",
+      });
     } finally {
       env.cleanup();
     }

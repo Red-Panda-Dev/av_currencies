@@ -42,7 +42,8 @@ body {
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
-  width: 320px;
+  width: min(100vw, 360px);
+  min-width: 300px;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -149,12 +150,13 @@ body {
 
 .converter__input {
   flex: 1;
-  padding: 8px 10px;
+  min-height: 44px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-card);
   color: var(--text);
-  font-size: 14px;
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
   outline: none;
 }
@@ -165,12 +167,13 @@ body {
 }
 
 .converter__select {
-  padding: 8px 10px;
+  min-height: 44px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-card);
   color: var(--text);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   outline: none;
   cursor: pointer;
@@ -204,12 +207,13 @@ body {
 
 .settings__select {
   width: 100%;
-  padding: 8px 10px;
+  min-height: 44px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-card);
   color: var(--text);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   outline: none;
   cursor: pointer;
@@ -231,17 +235,38 @@ body {
 }
 
 .footer__refresh {
-  padding: 5px 12px;
+  min-height: 44px;
+  padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-card);
   color: var(--accent);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition:
     background 0.15s,
     border-color 0.15s;
+}
+
+@media (max-width: 380px) {
+  body {
+    min-width: 100%;
+    width: 100%;
+  }
+
+  .popup {
+    padding: 12px;
+  }
+
+  .footer {
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .footer__refresh {
+    flex-shrink: 0;
+  }
 }
 
 .footer__refresh:hover {

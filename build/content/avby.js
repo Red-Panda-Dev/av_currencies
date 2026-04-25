@@ -5,6 +5,9 @@
   const DISPLAY_CURRENCIES = new Set(["BYN", "USD", "EUR", "RUB"]);
   const CURRENCY_SYMBOLS = { BYN: "р.", USD: "$", EUR: "€", RUB: "RUB" };
   const STORAGE_KEYS = ["ratesData", "selectedCurrency"];
+  const NODE_TYPE_ELEMENT = 1;
+  const NODE_TYPE_TEXT = 3;
+  const NODE_TYPE_DOCUMENT_FRAGMENT = 11;
 
   const PRICE_SELECTORS = [
     ".listing-index__price",
@@ -30,10 +33,13 @@
 
   const monthlyOriginalText = new WeakMap();
   const monthlyBynAmount = new WeakMap();
+  const trackedMonthlyNodes = new Set();
+  const pendingMonthlyNodes = new Set();
 
   let ratesData = null;
   let selectedCurrency = DEFAULT_DISPLAY_CURRENCY;
   let applyScheduled = false;
+  let fullMonthlyScanRequested = true;
 
   function normalizeCurrency(value) {
     if (DISPLAY_CURRENCIES.has(value)) return value;
@@ -112,8 +118,7 @@
     return parsed;
   }
 
-  function applyElementPrices() {
-    const elements = collectPriceElements();
+  function applyElementPrices(elements) {
     const canConvert = shouldConvertPrices();
     const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
 
@@ -144,23 +149,32 @@
     }
   }
 
-  function processMonthlyNode(node) {
-    if (!node || typeof node.nodeValue !== "string") return;
+  function registerMonthlyNode(node) {
+    if (!node || node.nodeType !== NODE_TYPE_TEXT) return false;
 
     const parentTag = node.parentElement?.tagName;
-    if (parentTag && SKIP_TEXT_NODE_TAGS.has(parentTag)) return;
+    if (parentTag && SKIP_TEXT_NODE_TAGS.has(parentTag)) return false;
 
-    const existingOriginal = monthlyOriginalText.get(node);
-    const currentText = node.nodeValue;
-
-    if (!existingOriginal && !MONTHLY_MARKER_REGEX.test(currentText)) {
-      return;
+    if (monthlyOriginalText.has(node)) {
+      trackedMonthlyNodes.add(node);
+      return true;
     }
 
-    const originalText = existingOriginal || currentText;
-    if (!existingOriginal) {
-      monthlyOriginalText.set(node, originalText);
+    const text = node.nodeValue;
+    if (typeof text !== "string" || !MONTHLY_MARKER_REGEX.test(text)) {
+      return false;
     }
+
+    monthlyOriginalText.set(node, text);
+    trackedMonthlyNodes.add(node);
+    return true;
+  }
+
+  function processMonthlyNode(node) {
+    if (!registerMonthlyNode(node)) return;
+
+    const originalText = monthlyOriginalText.get(node);
+    if (typeof originalText !== "string") return;
 
     if (!shouldConvertPrices()) {
       if (node.nodeValue !== originalText) {
@@ -208,29 +222,82 @@
     }
   }
 
-  function applyMonthlyPrices() {
-    if (!document || !document.body) return;
+  function collectMonthlyNodesFromSubtree(root) {
+    if (!root) return;
 
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-    );
-    const nodes = [];
+    if (root.nodeType === NODE_TYPE_TEXT) {
+      registerMonthlyNode(root);
+      pendingMonthlyNodes.add(root);
+      return;
+    }
+
+    if (
+      root.nodeType !== NODE_TYPE_ELEMENT &&
+      root.nodeType !== NODE_TYPE_DOCUMENT_FRAGMENT
+    ) {
+      return;
+    }
+
+    if (!document || typeof document.createTreeWalker !== "function") {
+      return;
+    }
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let current = walker.nextNode();
 
     while (current) {
-      nodes.push(current);
+      if (registerMonthlyNode(current)) {
+        pendingMonthlyNodes.add(current);
+      }
       current = walker.nextNode();
     }
+  }
 
-    for (const node of nodes) {
+  function collectInitialMonthlyNodes() {
+    if (!document || !document.body) return;
+    collectMonthlyNodesFromSubtree(document.body);
+  }
+
+  function pruneDisconnectedMonthlyNodes() {
+    for (const node of trackedMonthlyNodes) {
+      if (node?.isConnected) continue;
+
+      trackedMonthlyNodes.delete(node);
+      pendingMonthlyNodes.delete(node);
+      monthlyOriginalText.delete(node);
+      monthlyBynAmount.delete(node);
+    }
+  }
+
+  function applyMonthlyPrices() {
+    for (const node of trackedMonthlyNodes) {
       processMonthlyNode(node);
     }
   }
 
   function applyAll() {
     applyScheduled = false;
-    applyElementPrices();
+
+    if (typeof document === "undefined" || !document.documentElement) {
+      pendingMonthlyNodes.clear();
+      return;
+    }
+
+    if (fullMonthlyScanRequested) {
+      collectInitialMonthlyNodes();
+      fullMonthlyScanRequested = false;
+    }
+
+    const elements = collectPriceElements();
+    applyElementPrices(elements);
+
+    pruneDisconnectedMonthlyNodes();
+
+    for (const node of pendingMonthlyNodes) {
+      trackedMonthlyNodes.add(node);
+    }
+    pendingMonthlyNodes.clear();
+
     applyMonthlyPrices();
   }
 
@@ -249,10 +316,32 @@
   function setupObserver() {
     if (!document) return;
 
-    const root = document.documentElement;
+    const root = document.body || document.documentElement;
     if (!root) return;
 
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
+      let hasAddedNodes = false;
+
+      for (const mutation of mutations) {
+        if (mutation.type === "characterData") {
+          pendingMonthlyNodes.add(mutation.target);
+          continue;
+        }
+
+        if (mutation.type !== "childList" || mutation.addedNodes.length === 0) {
+          continue;
+        }
+
+        hasAddedNodes = true;
+        for (const node of mutation.addedNodes) {
+          collectMonthlyNodesFromSubtree(node);
+        }
+      }
+
+      if (!hasAddedNodes && pendingMonthlyNodes.size === 0) {
+        return;
+      }
+
       scheduleApply();
     });
 
@@ -261,6 +350,20 @@
       subtree: true,
       characterData: true,
     });
+  }
+
+  function requestRatesIfMissing() {
+    if (ratesData || !browser.runtime?.sendMessage) return;
+
+    browser.runtime
+      .sendMessage({ action: "ensureRates" })
+      .then((response) => {
+        if (!response?.ratesData) return;
+
+        ratesData = response.ratesData;
+        scheduleApply();
+      })
+      .catch(() => {});
   }
 
   function setupStorageListener() {
@@ -286,6 +389,7 @@
       const stored = await browser.storage.local.get(STORAGE_KEYS);
       ratesData = stored.ratesData || null;
       selectedCurrency = normalizeCurrency(stored.selectedCurrency);
+      requestRatesIfMissing();
       scheduleApply();
       setupObserver();
       setupStorageListener();

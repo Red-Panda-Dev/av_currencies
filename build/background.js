@@ -94,6 +94,19 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.action === "ensureRates") {
+    browser.storage.local
+      .get("ratesData")
+      .then(async ({ ratesData }) => {
+        if (!ratesData) {
+          await fetchRates();
+        }
+        return browser.storage.local.get(["ratesData", "lastError"]);
+      })
+      .then(sendResponse);
+    return true;
+  }
+
   if (message.action === "refreshRates") {
     fetchRates({ force: true }).then(sendResponse);
     return true;
