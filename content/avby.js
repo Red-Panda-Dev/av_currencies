@@ -310,8 +310,7 @@ globalThis.browser ??= globalThis.chrome;
           if (selectedCurrency === "USD") {
             convertedUsdDisplay = usdAmount;
           } else if (usdRateInfo) {
-            const usdInByn =
-              (usdAmount * usdRateInfo.rate) / usdRateInfo.scale;
+            const usdInByn = (usdAmount * usdRateInfo.rate) / usdRateInfo.scale;
             convertedUsdDisplay = convertFromBYN(usdInByn, rateInfo);
           } else {
             convertedUsdDisplay = usdAmount;
