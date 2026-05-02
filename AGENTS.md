@@ -16,10 +16,13 @@ popup/
 ├── popup.html         # Popup markup
 ├── popup.css          # Styling with light/dark theme support
 └── popup.js           # Popup controller: render, converter, refresh
+scripts/
+└── build-chrome.mjs   # Chrome build: copies files, transforms manifest, writes install note
 tests/
 ├── parse.test.js      # Vitest tests for lib/rates.js
 └── content.test.js    # Vitest + jsdom tests for content/avby.js
-examples/              # Test fixtures: saved NBRB API response and AV.by HTML pages
+examples/              # Test fixtures: NBRB API response and saved AV.by HTML pages
+vitest.config.js       # Vitest config with 80% coverage threshold on lib/
 ```
 
 ## Architecture and boundaries
@@ -69,5 +72,5 @@ make build-all            # Full dual-browser pipeline
 - `TARGET_CURRENCIES` is `["USD", "EUR", "RUB"]` — `parseRates` returns `null` if any of the three are missing from the API response
 - UI strings are in Russian — preserve Russian text when editing popup markup or JS
 - Alarm interval is 240 minutes (4 hours) — configured as `ALARM_INTERVAL_MINUTES` in `background.js`
-- Content script uses `MutationObserver` with subtree observation — test changes with dynamic DOM (infinite scroll, SPA navigation)
-- Content script tracks monthly-payment text nodes via `WeakMap` and uses `data-*` attributes to preserve original BYN text — do not remove these mechanisms
+- Content script uses `MutationObserver` with subtree and `characterData` observation — test changes with dynamic DOM (infinite scroll, SPA navigation, live text edits)
+- Content script preserves original BYN text via dataset attributes (`avCurrenciesOriginalText`, `avCurrenciesBynAmount`) on elements, `WeakMap` instances (`monthlyOriginalText`, `monthlyBynAmount`) for monthly-payment text nodes, and a `Set` (`trackedMonthlyNodes`) to track registered nodes — do not remove these mechanisms
