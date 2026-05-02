@@ -21,6 +21,9 @@ globalThis.browser ??= globalThis.chrome;
     ".salon-listing-model__banner-priсe",
     ".salon-listing-items__item-price-byn",
     ".salon-card__price-primary",
+    ".card-finance__description span",
+    ".stats__price-primary",
+    ".stats-listing-item__prices",
   ];
   const MONTHLY_ELEMENT_SELECTORS = [
     ".card__commercial-text > span:last-child",
@@ -28,6 +31,7 @@ globalThis.browser ??= globalThis.chrome;
   ];
   const FINANCE_RANGE_SELECTORS = [".finance-item__sum"];
   const PRICE_HISTORY_DESC_SELECTORS = [".price-history__desc"];
+  const STATS_SECONDARY_SELECTORS = [".stats__price-secondary"];
   const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
   const SALON_SUFFIX_SELECTOR = "span:last-child";
 
@@ -38,6 +42,7 @@ globalThis.browser ??= globalThis.chrome;
     /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*[—-]\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN/i;
   const PRICE_HISTORY_DUAL_REGEX =
     /^(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*р\.\s*≈\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*\$/;
+  const STATS_SECONDARY_REGEX = /^≈\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*\$/;
   const SKIP_TEXT_NODE_TAGS = new Set([
     "SCRIPT",
     "STYLE",
@@ -130,6 +135,10 @@ globalThis.browser ??= globalThis.chrome;
 
   function collectPriceHistoryDescElements() {
     return collectElementsBySelectors(PRICE_HISTORY_DESC_SELECTORS);
+  }
+
+  function collectStatsSecondaryElements() {
+    return collectElementsBySelectors(STATS_SECONDARY_SELECTORS);
   }
 
   function getOriginalElementText(element) {
@@ -331,6 +340,45 @@ globalThis.browser ??= globalThis.chrome;
     }
   }
 
+  function applyStatsSecondaryPrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (!canConvert || !rateInfo) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const secondaryMatch = originalText.match(STATS_SECONDARY_REGEX);
+      if (secondaryMatch) {
+        const usdAmount = parseBynPrice(secondaryMatch[1]);
+        if (usdAmount !== null) {
+          const usdRateInfo = getRateInfo("USD");
+          let convertedAmount;
+          if (selectedCurrency === "USD") {
+            convertedAmount = usdAmount;
+          } else if (usdRateInfo) {
+            const usdInByn = (usdAmount * usdRateInfo.rate) / usdRateInfo.scale;
+            convertedAmount = convertFromBYN(usdInByn, rateInfo);
+          } else {
+            convertedAmount = usdAmount;
+          }
+          nextText = `≈ ${formatDisplayPrice(convertedAmount, selectedCurrency)}`;
+        }
+      }
+
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
   function isBynSuffixText(value) {
     if (typeof value !== "string") return false;
 
@@ -515,6 +563,9 @@ globalThis.browser ??= globalThis.chrome;
     const priceHistoryDescElements = collectPriceHistoryDescElements();
     applyPriceHistoryDescPrices(priceHistoryDescElements);
 
+    const statsSecondaryElements = collectStatsSecondaryElements();
+    applyStatsSecondaryPrices(statsSecondaryElements);
+
     applySalonPriceSuffixes();
 
     pruneDisconnectedMonthlyNodes();
@@ -580,6 +631,10 @@ globalThis.browser ??= globalThis.chrome;
       return isInElementMatchingSelectors(node, PRICE_HISTORY_DESC_SELECTORS);
     }
 
+    function isInStatsSecondaryElement(node) {
+      return isInElementMatchingSelectors(node, STATS_SECONDARY_SELECTORS);
+    }
+
     const observer = new MutationObserver((mutations) => {
       let shouldApply = false;
 
@@ -596,7 +651,8 @@ globalThis.browser ??= globalThis.chrome;
             isInMonthlyElement(mutation.target) ||
             isInFinanceRangeElement(mutation.target) ||
             isInSalonWrapper(mutation.target) ||
-            isInPriceHistoryDescElement(mutation.target)
+            isInPriceHistoryDescElement(mutation.target) ||
+            isInStatsSecondaryElement(mutation.target)
           ) {
             shouldApply = true;
           }
