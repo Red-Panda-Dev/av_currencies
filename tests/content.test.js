@@ -592,6 +592,121 @@ describe("av.by content script", () => {
     }
   });
 
+  it("converts price-history desc elements in analyse modal", async () => {
+    const modalHtml = `
+      <html><body>
+        <div class="price-history">
+          <div class="price-history__box">
+            <div class="price-history__wrap">
+              <div class="price-history__desc">53\u00A0634\u00A0р.</div>
+            </div>
+            <p>цена на этот авто средняя по рынку</p>
+          </div>
+          <div class="price-history__box">
+            <div class="price-history__wrap">
+              <div class="price-history__desc">53\u00A0384\u00A0р. <small>≈\u00A018\u00A0911\u00A0$</small></div>
+            </div>
+            <p>средняя цена на похожие авто</p>
+          </div>
+        </div>
+      </body></html>
+    `;
+
+    const env = await bootstrapContentScript(modalHtml, {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const descs = [
+        ...env.dom.window.document.querySelectorAll(".price-history__desc"),
+      ];
+      expect(descs.length).toBe(2);
+
+      expect(descs[0].textContent).toContain("$");
+      expect(descs[0].textContent).not.toContain("р.");
+      expect(descs[0].dataset.avCurrenciesOriginalText).toContain("р.");
+
+      expect(descs[1].textContent).toContain("≈");
+      expect(descs[1].textContent).toContain("$");
+      expect(descs[1].textContent).not.toContain("р.");
+      expect(descs[1].dataset.avCurrenciesOriginalText).toContain("р.");
+
+      const originalFirst = descs[0].dataset.avCurrenciesOriginalText;
+      const originalSecond = descs[1].dataset.avCurrenciesOriginalText;
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(descs[0].textContent).toBe(originalFirst);
+      expect(descs[1].textContent).toBe(originalSecond);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts price-history dual element with USD to EUR correctly", async () => {
+    const modalHtml = `
+      <html><body>
+        <div class="price-history__desc">53\u00A0384\u00A0р. <small>≈\u00A018\u00A0911\u00A0$</small></div>
+      </body></html>
+    `;
+
+    const env = await bootstrapContentScript(modalHtml, {
+      ratesData: sampleRates,
+      selectedCurrency: "EUR",
+    });
+
+    try {
+      const desc = env.dom.window.document.querySelector(
+        ".price-history__desc",
+      );
+      expect(desc).not.toBeNull();
+      expect(desc.textContent).toContain("≈");
+      expect(desc.textContent).toContain("€");
+      expect(desc.textContent).not.toContain("р.");
+      expect(desc.textContent).not.toContain("$");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts dynamically added price-history desc elements", async () => {
+    const env = await bootstrapContentScript("<html><body></body></html>", {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const desc = env.dom.window.document.createElement("div");
+      desc.className = "price-history__desc";
+      desc.textContent = "53\u00A0634\u00A0р.";
+      env.dom.window.document.body.append(desc);
+
+      await flushTicks();
+
+      expect(desc.textContent).toContain("$");
+      expect(desc.textContent).not.toContain("р.");
+      expect(desc.dataset.avCurrenciesOriginalText).toContain("р.");
+
+      const dualDesc = env.dom.window.document.createElement("div");
+      dualDesc.className = "price-history__desc";
+      dualDesc.innerHTML =
+        "53\u00A0384\u00A0р. <small>≈\u00A018\u00A0911\u00A0$</small>";
+      env.dom.window.document.body.append(dualDesc);
+
+      await flushTicks();
+
+      expect(dualDesc.textContent).toContain("≈");
+      expect(dualDesc.textContent).toContain("$");
+      expect(dualDesc.textContent).not.toContain("р.");
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("requests missing rates from background via ensureRates", async () => {
     const env = await bootstrapContentScript(
       "<html><body><div class='listing-index__price'>72 990 р.</div></body></html>",

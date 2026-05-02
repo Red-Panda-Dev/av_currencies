@@ -27,6 +27,7 @@ globalThis.browser ??= globalThis.chrome;
     ".finance-item__subtitle",
   ];
   const FINANCE_RANGE_SELECTORS = [".finance-item__sum"];
+  const PRICE_HISTORY_DESC_SELECTORS = [".price-history__desc"];
   const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
   const SALON_SUFFIX_SELECTOR = "span:last-child";
 
@@ -35,6 +36,8 @@ globalThis.browser ??= globalThis.chrome;
   const MONTHLY_MARKER_REGEX = /BYN\s*в\s*месяц/i;
   const FINANCE_RANGE_REGEX =
     /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*[—-]\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN/i;
+  const PRICE_HISTORY_DUAL_REGEX =
+    /^(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*р\.\s*≈\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*\$/;
   const SKIP_TEXT_NODE_TAGS = new Set([
     "SCRIPT",
     "STYLE",
@@ -123,6 +126,10 @@ globalThis.browser ??= globalThis.chrome;
 
   function collectFinanceRangeElements() {
     return collectElementsBySelectors(FINANCE_RANGE_SELECTORS);
+  }
+
+  function collectPriceHistoryDescElements() {
+    return collectElementsBySelectors(PRICE_HISTORY_DESC_SELECTORS);
   }
 
   function getOriginalElementText(element) {
@@ -271,6 +278,54 @@ globalThis.browser ??= globalThis.chrome;
         convertFromBYN(endAmount, rateInfo),
         selectedCurrency,
       );
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
+  function applyPriceHistoryDescPrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (!canConvert || !rateInfo) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const dualMatch = originalText.match(PRICE_HISTORY_DUAL_REGEX);
+      if (dualMatch) {
+        const bynAmount = parseBynPrice(dualMatch[1]);
+        const usdAmount = parseBynPrice(dualMatch[2]);
+        if (bynAmount !== null && usdAmount !== null) {
+          const convertedByn = convertFromBYN(bynAmount, rateInfo);
+          const usdRateInfo = getRateInfo("USD");
+          let convertedUsdDisplay;
+          if (selectedCurrency === "USD") {
+            convertedUsdDisplay = usdAmount;
+          } else if (usdRateInfo) {
+            const usdInByn =
+              (usdAmount * usdRateInfo.rate) / usdRateInfo.scale;
+            convertedUsdDisplay = convertFromBYN(usdInByn, rateInfo);
+          } else {
+            convertedUsdDisplay = usdAmount;
+          }
+          nextText = `${formatDisplayPrice(convertedByn, selectedCurrency)} ≈ ${formatDisplayPrice(convertedUsdDisplay, selectedCurrency)}`;
+        }
+      } else {
+        const bynAmount = getElementBynAmount(element, originalText);
+        if (bynAmount !== null) {
+          const converted = convertFromBYN(bynAmount, rateInfo);
+          nextText = formatDisplayPrice(converted, selectedCurrency);
+        }
+      }
+
       if (element.textContent !== nextText) {
         element.textContent = nextText;
       }
@@ -458,6 +513,9 @@ globalThis.browser ??= globalThis.chrome;
     const financeRangeElements = collectFinanceRangeElements();
     applyFinanceRangePrices(financeRangeElements);
 
+    const priceHistoryDescElements = collectPriceHistoryDescElements();
+    applyPriceHistoryDescPrices(priceHistoryDescElements);
+
     applySalonPriceSuffixes();
 
     pruneDisconnectedMonthlyNodes();
@@ -519,6 +577,10 @@ globalThis.browser ??= globalThis.chrome;
       return isInElementMatchingSelectors(node, [SALON_PRICE_WRAPPER_SELECTOR]);
     }
 
+    function isInPriceHistoryDescElement(node) {
+      return isInElementMatchingSelectors(node, PRICE_HISTORY_DESC_SELECTORS);
+    }
+
     const observer = new MutationObserver((mutations) => {
       let shouldApply = false;
 
@@ -534,7 +596,8 @@ globalThis.browser ??= globalThis.chrome;
             isInPriceElement(mutation.target) ||
             isInMonthlyElement(mutation.target) ||
             isInFinanceRangeElement(mutation.target) ||
-            isInSalonWrapper(mutation.target)
+            isInSalonWrapper(mutation.target) ||
+            isInPriceHistoryDescElement(mutation.target)
           ) {
             shouldApply = true;
           }
