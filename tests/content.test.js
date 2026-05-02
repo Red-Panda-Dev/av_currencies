@@ -707,6 +707,30 @@ describe("av.by content script", () => {
     }
   });
 
+  it("converts card-finance description price", async () => {
+    const env = await bootstrapContentScript(
+      `<html><body>
+        <div class="card-finance__header">
+          <h2 class="card-finance__title">Кредиты и лизинг на\u00A0покупку</h2>
+          <p class="card-finance__description">Peugeot 3008 II · Рестайлинг, <span>53\u00A0634\u00A0р.</span></p>
+        </div>
+      </body></html>`,
+      { selectedCurrency: "USD", ratesData: sampleRates },
+    );
+
+    try {
+      await flushTicks();
+
+      const span = env.dom.window.document.querySelector(
+        ".card-finance__description span",
+      );
+      expect(span.textContent).toContain("$");
+      expect(span.textContent).not.toContain("р.");
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("requests missing rates from background via ensureRates", async () => {
     const env = await bootstrapContentScript(
       "<html><body><div class='listing-index__price'>72 990 р.</div></body></html>",
