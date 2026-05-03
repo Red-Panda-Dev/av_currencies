@@ -17,6 +17,7 @@ globalThis.browser ??= globalThis.chrome;
     ".card__price-button",
     ".listing-top__price-primary",
     ".featured__price-value strong",
+    ".featured-item__price-primary",
     ".salon-listing-top__prices > div",
     ".salon-listing-model__banner-priсe",
     ".salon-listing-items__item-price-byn",
@@ -30,6 +31,7 @@ globalThis.browser ??= globalThis.chrome;
     ".finance-item__subtitle",
   ];
   const FINANCE_RANGE_SELECTORS = [".finance-item__sum"];
+  const FINANCE_DESCRIPTION_SELECTORS = [".finance-item__description"];
   const PRICE_HISTORY_DESC_SELECTORS = [".price-history__desc"];
   const STATS_SECONDARY_SELECTORS = [".stats__price-secondary"];
   const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
@@ -39,6 +41,8 @@ globalThis.browser ??= globalThis.chrome;
     /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN(\s*в\s*месяц)/i;
   const MONTHLY_MARKER_REGEX = /BYN\s*в\s*месяц/i;
   const FINANCE_RANGE_REGEX =
+    /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*[—-]\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN/i;
+  const FINANCE_DESCRIPTION_RANGE_REGEX =
     /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*[—-]\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN/i;
   const PRICE_HISTORY_DUAL_REGEX =
     /^(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*р\.\s*≈\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*\$/;
@@ -131,6 +135,10 @@ globalThis.browser ??= globalThis.chrome;
 
   function collectFinanceRangeElements() {
     return collectElementsBySelectors(FINANCE_RANGE_SELECTORS);
+  }
+
+  function collectFinanceDescriptionElements() {
+    return collectElementsBySelectors(FINANCE_DESCRIPTION_SELECTORS);
   }
 
   function collectPriceHistoryDescElements() {
@@ -286,6 +294,53 @@ globalThis.browser ??= globalThis.chrome;
         convertFromBYN(startAmount, rateInfo),
         convertFromBYN(endAmount, rateInfo),
         selectedCurrency,
+      );
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
+  function applyFinanceDescriptionPrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (!canConvert || !rateInfo) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const match = originalText.match(FINANCE_DESCRIPTION_RANGE_REGEX);
+      if (!match) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const startAmount = parseBynPrice(match[1]);
+      const endAmount = parseBynPrice(match[2]);
+      if (startAmount === null || endAmount === null) {
+        if (element.textContent !== nextText) {
+          element.textContent = nextText;
+        }
+        continue;
+      }
+
+      const rangeReplacement = formatDisplayPriceRange(
+        convertFromBYN(startAmount, rateInfo),
+        convertFromBYN(endAmount, rateInfo),
+        selectedCurrency,
+      );
+      nextText = originalText.replace(
+        FINANCE_DESCRIPTION_RANGE_REGEX,
+        rangeReplacement,
       );
       if (element.textContent !== nextText) {
         element.textContent = nextText;
@@ -560,6 +615,9 @@ globalThis.browser ??= globalThis.chrome;
     const financeRangeElements = collectFinanceRangeElements();
     applyFinanceRangePrices(financeRangeElements);
 
+    const financeDescriptionElements = collectFinanceDescriptionElements();
+    applyFinanceDescriptionPrices(financeDescriptionElements);
+
     const priceHistoryDescElements = collectPriceHistoryDescElements();
     applyPriceHistoryDescPrices(priceHistoryDescElements);
 
@@ -623,6 +681,10 @@ globalThis.browser ??= globalThis.chrome;
       return isInElementMatchingSelectors(node, FINANCE_RANGE_SELECTORS);
     }
 
+    function isInFinanceDescriptionElement(node) {
+      return isInElementMatchingSelectors(node, FINANCE_DESCRIPTION_SELECTORS);
+    }
+
     function isInSalonWrapper(node) {
       return isInElementMatchingSelectors(node, [SALON_PRICE_WRAPPER_SELECTOR]);
     }
@@ -650,6 +712,7 @@ globalThis.browser ??= globalThis.chrome;
             isInPriceElement(mutation.target) ||
             isInMonthlyElement(mutation.target) ||
             isInFinanceRangeElement(mutation.target) ||
+            isInFinanceDescriptionElement(mutation.target) ||
             isInSalonWrapper(mutation.target) ||
             isInPriceHistoryDescElement(mutation.target) ||
             isInStatsSecondaryElement(mutation.target)
