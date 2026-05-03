@@ -26,6 +26,12 @@ const partsListFixturePath = join(
   "examples",
   "parts_list.html",
 );
+const autoCardMobiFixturePath = join(
+  __dirname,
+  "..",
+  "examples",
+  "auto_card_mobi.html",
+);
 
 const contentScriptSource = readFileSync(scriptPath, "utf-8");
 const indexFixture = readFileSync(indexFixturePath, "utf-8");
@@ -33,6 +39,7 @@ const autoCardFixture = readFileSync(autoCardFixturePath, "utf-8");
 const newCarsListFixture = readFileSync(newCarsListFixturePath, "utf-8");
 const newCarPageFixture = readFileSync(newCarPageFixturePath, "utf-8");
 const partsListFixture = readFileSync(partsListFixturePath, "utf-8");
+const autoCardMobiFixture = readFileSync(autoCardMobiFixturePath, "utf-8");
 
 const sampleRates = {
   rates: {
@@ -755,6 +762,129 @@ describe("av.by content script", () => {
       expect(env.browserMock.runtimeMessages).toContainEqual({
         action: "ensureRates",
       });
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts mobile card page finance description and carousel prices", async () => {
+    const env = await bootstrapContentScript(autoCardMobiFixture, {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const cardPrice = env.dom.window.document.querySelector(
+        ".card__price-button",
+      );
+      expect(cardPrice).not.toBeNull();
+      expect(cardPrice.textContent).toContain("$");
+
+      const financeSum =
+        env.dom.window.document.querySelector(".finance-item__sum");
+      expect(financeSum).not.toBeNull();
+      expect(financeSum.textContent).toContain("$");
+      expect(financeSum.textContent).not.toContain("BYN");
+
+      const financeSubtitle = env.dom.window.document.querySelector(
+        ".finance-item__subtitle",
+      );
+      expect(financeSubtitle).not.toBeNull();
+      expect(financeSubtitle.textContent).toContain("$");
+      expect(financeSubtitle.textContent).toContain("в");
+      expect(financeSubtitle.textContent).not.toContain("BYN");
+
+      const carouselPrices = [
+        ...env.dom.window.document.querySelectorAll(
+          ".listing-top__price-primary",
+        ),
+      ];
+      expect(carouselPrices.length).toBeGreaterThan(0);
+      for (const price of carouselPrices) {
+        expect(price.textContent).toContain("$");
+        expect(price.textContent).not.toMatch(/[рp]\./i);
+      }
+
+      const featuredPrice = env.dom.window.document.querySelector(
+        ".featured__price-value strong",
+      );
+      expect(featuredPrice).not.toBeNull();
+      expect(featuredPrice.textContent).toContain("$");
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(financeSum.dataset.avCurrenciesOriginalText).toContain("BYN");
+      expect(financeSubtitle.dataset.avCurrenciesOriginalText).toContain("BYN");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts finance-item__description with inline BYN range", async () => {
+    const html = `<html><body>
+      <div class="finance-item__details">
+        <div class="finance-item__description">9\u00A0600 — 813\u00A0333 BYN, 13 — 84 мес., c\u00A0досрочным погашением, без поручителей</div>
+      </div>
+    </body></html>`;
+
+    const env = await bootstrapContentScript(html, {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const desc = env.dom.window.document.querySelector(
+        ".finance-item__description",
+      );
+      expect(desc).not.toBeNull();
+      expect(desc.textContent).toContain("$");
+      expect(desc.textContent).not.toContain("BYN");
+      expect(desc.textContent).toContain("13 — 84 мес.");
+      expect(desc.textContent).toContain("досрочным погашением");
+      expect(desc.dataset.avCurrenciesOriginalText).toContain("BYN");
+
+      const originalText = desc.dataset.avCurrenciesOriginalText;
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(desc.textContent).toBe(originalText);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts featured-item__price-primary prices", async () => {
+    const html = `<html><body>
+      <div class="featured-item__price">
+        <div class="featured-item__price-primary"><span>300</span>&nbsp;р.</div>
+      </div>
+    </body></html>`;
+
+    const env = await bootstrapContentScript(html, {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const price = env.dom.window.document.querySelector(
+        ".featured-item__price-primary",
+      );
+      expect(price).not.toBeNull();
+      expect(price.textContent).toContain("$");
+      expect(price.textContent).not.toContain("р.");
+      expect(price.dataset.avCurrenciesOriginalText).toContain("р.");
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(price.textContent).toBe(price.dataset.avCurrenciesOriginalText);
     } finally {
       env.cleanup();
     }
