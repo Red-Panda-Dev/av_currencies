@@ -32,22 +32,22 @@ package-firefox:
 	cp -r manifest.json background.js lib content popup icons $(FIREFOX_BUILD_DIR)/
 	cp examples/nbrb_response.json $(FIREFOX_BUILD_DIR)/
 	rm -f $(EXT_NAME).zip
-	cd $(FIREFOX_BUILD_DIR) && zip -r ../../$(EXT_NAME).zip .
-	@echo "Built: $(EXT_NAME).zip"
+	cd $(FIREFOX_BUILD_DIR) && zip -r ../../$(EXT_NAME)-firefox.zip .
+	@echo "Built: $(EXT_NAME)-firefox.zip"
 
 build-chrome: format-check lint test package-chrome
 
 package-chrome:
 	node scripts/build-chrome.mjs
 	rm -f $(EXT_NAME)-chrome.zip
-	cd $(CHROME_BUILD_DIR) && zip -r ../../$(EXT_NAME)-chrome.zip .
+	cd $(CHROME_BUILD_DIR) && zip -r ../../$(EXT_NAME)-chrome.zip . -x "*_metadata*"
 	@echo "Built: $(EXT_NAME)-chrome.zip"
 
 build: format-check lint test package-firefox package-chrome
 
 clean:
 	rm -rf $(BUILD_DIR) coverage
-	rm -f $(EXT_NAME).zip $(EXT_NAME)-chrome.zip
+	rm -f $(EXT_NAME)-firefox.zip $(EXT_NAME)-chrome.zip
 
 run: lint
 	npx web-ext run --source-dir $(EXT_DIR) --target firefox-desktop
