@@ -19,7 +19,17 @@ content/
 - **DOM is untrusted**: all price text is parsed from the page DOM. The script never writes `innerHTML` — only `textContent` and `nodeValue` modifications.
 - **Original text preservation**: BYN prices are saved in dataset attributes `avCurrenciesOriginalText` and `avCurrenciesBynAmount` on price elements, and in `WeakMap` instances (`monthlyOriginalText`, `monthlyBynAmount`) for monthly-payment text nodes. A `Set` (`trackedMonthlyNodes`) tracks all registered monthly nodes. These must not be removed — they enable restoring original BYN text when the user switches currency back to BYN.
 - **MutationObserver**: observes `document.body` with `{ childList: true, subtree: true, characterData: true }`. Processes newly added nodes, attribute changes, and live text edits. Be careful not to trigger infinite loops — the script guards against re-processing already-converted elements.
-- **Selector categories**: price elements (`PRICE_SELECTORS`), monthly elements (`MONTHLY_ELEMENT_SELECTORS`), finance ranges (`FINANCE_RANGE_SELECTORS`), price history descriptions (`PRICE_HISTORY_DESC_SELECTORS`), and salon price wrappers (`SALON_PRICE_WRAPPER_SELECTOR`). Each has its own collection and processing function.
+- **Selector categories**: each has its own collection and processing function:
+  - `PRICE_SELECTORS` — main price elements (listings, cards, salons, stats)
+  - `MONTHLY_ELEMENT_SELECTORS` — monthly payment text containers
+  - `FINANCE_RANGE_SELECTORS` — finance range blocks (`… BYN`)
+  - `FINANCE_DESCRIPTION_SELECTORS` — finance descriptions with inline BYN ranges
+  - `PRICE_HISTORY_DESC_SELECTORS` — price history description cells (BYN only or `BYN ≈ USD` dual)
+  - `STATS_SECONDARY_SELECTORS` — secondary stats prices (`≈ N $`)
+  - `GRAPH_ITEM_PRICE_SELECTORS` — graph item price labels
+  - `GRAPH_LOG_DIFF_SELECTORS` — graph log price differences (`− N р.`)
+  - `GRAPH_LOG_SUM_SELECTORS` — graph log price sums
+  - `SALON_PRICE_WRAPPER_SELECTOR` — salon price wrappers (suffix "р." handling)
 
 ## Safe change rules
 

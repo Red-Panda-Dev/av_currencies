@@ -18,7 +18,7 @@ tests/
 - **`content.test.js`** is more complex:
   - Loads `content/avby.js` source via `readFileSync` and executes it inside a JSDOM `<script>` block.
   - Uses a `createBrowserMock()` function to simulate `browser.storage.local`, `browser.runtime.sendMessage`, and `browser.storage.onChanged`. If you add new browser API usage to the content script, you must extend this mock.
-  - Reads HTML fixtures from `examples/` (`index.html`, `auto_card.html`, `new_cars_list.html`, `new_car_page.html`, `parts_list.html`). These are real AV.by page snapshots.
+  - Reads HTML fixtures from `examples/` (`index.html`, `auto_card.html`, `auto_card_mobi.html`, `new_cars_list.html`, `new_car_page.html`, `parts_list.html`). These are real AV.by page snapshots. Other HTML files in `examples/` are saved pages not yet wired into tests.
   - The mock returns rate data in the shape `{ rates: { USD: { rate, scale }, ... } }` — this is the processed format from `lib/rates.js:parseRates`, not the raw NBRB API response.
   - `bootstrapContentScript()` sets up JSDOM, injects browser mocks into globals, evals the content script, and returns a cleanup function. Always call `cleanup()` in a `finally` block.
 
