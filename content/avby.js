@@ -34,6 +34,9 @@ globalThis.browser ??= globalThis.chrome;
   const FINANCE_DESCRIPTION_SELECTORS = [".finance-item__description"];
   const PRICE_HISTORY_DESC_SELECTORS = [".price-history__desc"];
   const STATS_SECONDARY_SELECTORS = [".stats__price-secondary"];
+  const GRAPH_ITEM_PRICE_SELECTORS = [".graph-item__price"];
+  const GRAPH_LOG_DIFF_SELECTORS = [".graph-log__diff"];
+  const GRAPH_LOG_SUM_SELECTORS = [".graph-log__sum"];
   const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
   const SALON_SUFFIX_SELECTOR = "span:last-child";
 
@@ -47,6 +50,8 @@ globalThis.browser ??= globalThis.chrome;
   const PRICE_HISTORY_DUAL_REGEX =
     /^(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*р\.\s*≈\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*\$/;
   const STATS_SECONDARY_REGEX = /^≈\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*\$/;
+  const GRAPH_LOG_DIFF_REGEX =
+    /^([−\-+]\s*)(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*р\./;
   const SKIP_TEXT_NODE_TAGS = new Set([
     "SCRIPT",
     "STYLE",
@@ -147,6 +152,18 @@ globalThis.browser ??= globalThis.chrome;
 
   function collectStatsSecondaryElements() {
     return collectElementsBySelectors(STATS_SECONDARY_SELECTORS);
+  }
+
+  function collectGraphItemPriceElements() {
+    return collectElementsBySelectors(GRAPH_ITEM_PRICE_SELECTORS);
+  }
+
+  function collectGraphLogDiffElements() {
+    return collectElementsBySelectors(GRAPH_LOG_DIFF_SELECTORS);
+  }
+
+  function collectGraphLogSumElements() {
+    return collectElementsBySelectors(GRAPH_LOG_SUM_SELECTORS);
   }
 
   function getOriginalElementText(element) {
@@ -434,6 +451,80 @@ globalThis.browser ??= globalThis.chrome;
     }
   }
 
+  function applyGraphItemPricePrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (canConvert && rateInfo) {
+        const bynAmount = getElementBynAmount(element, originalText);
+        if (bynAmount !== null) {
+          nextText = formatDisplayPrice(
+            convertFromBYN(bynAmount, rateInfo),
+            selectedCurrency,
+          );
+        }
+      }
+
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
+  function applyGraphLogSumPrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (canConvert && rateInfo) {
+        const bynAmount = getElementBynAmount(element, originalText);
+        if (bynAmount !== null) {
+          nextText = formatDisplayPrice(
+            convertFromBYN(bynAmount, rateInfo),
+            selectedCurrency,
+          );
+        }
+      }
+
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
+  function applyGraphLogDiffPrices(elements) {
+    const canConvert = shouldConvertPrices();
+    const rateInfo = canConvert ? getRateInfo(selectedCurrency) : null;
+
+    for (const element of elements) {
+      const originalText = getOriginalElementText(element);
+      let nextText = originalText;
+
+      if (canConvert && rateInfo) {
+        const match = originalText.match(GRAPH_LOG_DIFF_REGEX);
+        if (match) {
+          const prefix = match[1];
+          const bynAmount = parseBynPrice(match[2]);
+          if (bynAmount !== null) {
+            const converted = convertFromBYN(bynAmount, rateInfo);
+            nextText = `${prefix}${formatDisplayPrice(converted, selectedCurrency)}`;
+          }
+        }
+      }
+
+      if (element.textContent !== nextText) {
+        element.textContent = nextText;
+      }
+    }
+  }
+
   function isBynSuffixText(value) {
     if (typeof value !== "string") return false;
 
@@ -624,6 +715,15 @@ globalThis.browser ??= globalThis.chrome;
     const statsSecondaryElements = collectStatsSecondaryElements();
     applyStatsSecondaryPrices(statsSecondaryElements);
 
+    const graphItemPriceElements = collectGraphItemPriceElements();
+    applyGraphItemPricePrices(graphItemPriceElements);
+
+    const graphLogDiffElements = collectGraphLogDiffElements();
+    applyGraphLogDiffPrices(graphLogDiffElements);
+
+    const graphLogSumElements = collectGraphLogSumElements();
+    applyGraphLogSumPrices(graphLogSumElements);
+
     applySalonPriceSuffixes();
 
     pruneDisconnectedMonthlyNodes();
@@ -697,6 +797,18 @@ globalThis.browser ??= globalThis.chrome;
       return isInElementMatchingSelectors(node, STATS_SECONDARY_SELECTORS);
     }
 
+    function isInGraphItemPriceElement(node) {
+      return isInElementMatchingSelectors(node, GRAPH_ITEM_PRICE_SELECTORS);
+    }
+
+    function isInGraphLogDiffElement(node) {
+      return isInElementMatchingSelectors(node, GRAPH_LOG_DIFF_SELECTORS);
+    }
+
+    function isInGraphLogSumElement(node) {
+      return isInElementMatchingSelectors(node, GRAPH_LOG_SUM_SELECTORS);
+    }
+
     const observer = new MutationObserver((mutations) => {
       let shouldApply = false;
 
@@ -715,7 +827,10 @@ globalThis.browser ??= globalThis.chrome;
             isInFinanceDescriptionElement(mutation.target) ||
             isInSalonWrapper(mutation.target) ||
             isInPriceHistoryDescElement(mutation.target) ||
-            isInStatsSecondaryElement(mutation.target)
+            isInStatsSecondaryElement(mutation.target) ||
+            isInGraphItemPriceElement(mutation.target) ||
+            isInGraphLogDiffElement(mutation.target) ||
+            isInGraphLogSumElement(mutation.target)
           ) {
             shouldApply = true;
           }

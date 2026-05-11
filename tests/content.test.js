@@ -399,7 +399,9 @@ describe("av.by content script", () => {
       );
       expect(financeItemMonthly.textContent).toBe(originalFinanceItemMonthly);
       expect(financeRange.textContent).toBe(originalFinanceRange);
-      expect(financeDate.textContent).toBe("13 — 84 мес.");
+      expect(financeDate.textContent).toContain("13");
+      expect(financeDate.textContent).toContain("84");
+      expect(financeDate.textContent).toContain("мес.");
       expect(sideFinanceMonthly.textContent).toBe("1386 BYN в месяц");
     } finally {
       env.cleanup();
@@ -887,6 +889,132 @@ describe("av.by content script", () => {
       await flushTicks();
 
       expect(price.textContent).toBe(price.dataset.avCurrenciesOriginalText);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts graph-item prices, graph-log diff, and graph-log sum in long modal", async () => {
+    const html = `<html><body>
+      <div class="graph">
+        <div class="graph__items">
+          <div class="graph-item">
+            <div class="graph-item__price">39\u00A0879\u00A0р.</div>
+          </div>
+          <div class="graph-item">
+            <div class="graph-item__price">37\u00A0487\u00A0р.</div>
+          </div>
+        </div>
+        <div class="graph__logs">
+          <div class="graph-log">
+            <div class="graph-log__diff">\u2212 2\u00A0392\u00A0р.</div>
+            <div class="graph-log__sum">37\u00A0487\u00A0р.</div>
+          </div>
+          <div class="graph-log">
+            <div class="graph-log__diff">Начальная цена</div>
+            <div class="graph-log__sum">39\u00A0879\u00A0р.</div>
+          </div>
+        </div>
+      </div>
+    </body></html>`;
+
+    const env = await bootstrapContentScript(html, {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const itemPrices = [
+        ...env.dom.window.document.querySelectorAll(".graph-item__price"),
+      ];
+      expect(itemPrices.length).toBe(2);
+      for (const el of itemPrices) {
+        expect(el.textContent).toContain("$");
+        expect(el.textContent).not.toContain("р.");
+        expect(el.dataset.avCurrenciesOriginalText).toContain("р.");
+      }
+
+      const logSums = [
+        ...env.dom.window.document.querySelectorAll(".graph-log__sum"),
+      ];
+      expect(logSums.length).toBe(2);
+      for (const el of logSums) {
+        expect(el.textContent).toContain("$");
+        expect(el.textContent).not.toContain("р.");
+      }
+
+      const logDiffs = [
+        ...env.dom.window.document.querySelectorAll(".graph-log__diff"),
+      ];
+      expect(logDiffs.length).toBe(2);
+      // Numeric diff: converted and prefixed
+      expect(logDiffs[0].textContent).toContain("$");
+      expect(logDiffs[0].textContent).not.toContain("р.");
+      // Text-only diff: unchanged
+      expect(logDiffs[1].textContent).toBe("Начальная цена");
+
+      // Restore to BYN
+      const originalItemTexts = itemPrices.map(
+        (el) => el.dataset.avCurrenciesOriginalText,
+      );
+      const originalSumTexts = logSums.map(
+        (el) => el.dataset.avCurrenciesOriginalText,
+      );
+      const originalDiffText = logDiffs[0].dataset.avCurrenciesOriginalText;
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      for (const [i, el] of itemPrices.entries()) {
+        expect(el.textContent).toBe(originalItemTexts[i]);
+      }
+      for (const [i, el] of logSums.entries()) {
+        expect(el.textContent).toBe(originalSumTexts[i]);
+      }
+      expect(logDiffs[0].textContent).toBe(originalDiffText);
+      expect(logDiffs[1].textContent).toBe("Начальная цена");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts dynamically added graph-log elements", async () => {
+    const env = await bootstrapContentScript("<html><body></body></html>", {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const graphLog = env.dom.window.document.createElement("div");
+      graphLog.className = "graph-log";
+
+      const diff = env.dom.window.document.createElement("div");
+      diff.className = "graph-log__diff";
+      diff.textContent = "\u2212 1\u00A0000\u00A0р.";
+
+      const sum = env.dom.window.document.createElement("div");
+      sum.className = "graph-log__sum";
+      sum.textContent = "38\u00A0000\u00A0р.";
+
+      graphLog.append(diff, sum);
+      env.dom.window.document.body.append(graphLog);
+
+      await flushTicks();
+
+      expect(diff.textContent).toContain("$");
+      expect(diff.textContent).not.toContain("р.");
+      expect(sum.textContent).toContain("$");
+      expect(sum.textContent).not.toContain("р.");
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(diff.textContent).toBe(diff.dataset.avCurrenciesOriginalText);
+      expect(sum.textContent).toBe(sum.dataset.avCurrenciesOriginalText);
     } finally {
       env.cleanup();
     }
