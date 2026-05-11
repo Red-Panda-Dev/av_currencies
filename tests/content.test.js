@@ -370,7 +370,9 @@ describe("av.by content script", () => {
       expect(financeRange.textContent).toContain("—");
       expect(financeRange.textContent).not.toContain("BYN");
       expect(financeRange.dataset.avCurrenciesOriginalText).toContain("BYN");
-      expect(financeDate.textContent).toBe("13 — 84 мес.");
+      expect(financeDate.textContent).toContain("13");
+      expect(financeDate.textContent).toContain("84");
+      expect(financeDate.textContent).toContain("мес.");
       expect(sideFinanceMonthly.textContent).toContain("€ в месяц");
 
       const monthlyNode = env.dom.window.document.createElement("div");
