@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AV.by Валюты",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Замена цен на AV.by из BYN в выбранную валюту с курсами НБРБ.",
   "permissions": [
     "alarms",

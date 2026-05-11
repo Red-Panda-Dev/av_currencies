@@ -852,6 +852,7 @@ globalThis.browser ??= globalThis.chrome;
       }
 
       scheduleApply();
+      applyOriginalDaysOnSale();
     });
 
     observer.observe(root, {
@@ -893,6 +894,61 @@ globalThis.browser ??= globalThis.chrome;
     });
   }
 
+  function applyOriginalDaysOnSale() {
+    if (!document || typeof document.querySelectorAll !== "function") {
+      return;
+    }
+
+    try {
+      const nextDataEl = document.getElementById("__NEXT_DATA__");
+      if (!nextDataEl) return;
+
+      const nextData = JSON.parse(nextDataEl.textContent);
+      const originalDaysOnSale =
+        nextData?.props?.initialState?.advert?.advert?.originalDaysOnSale;
+
+      if (typeof originalDaysOnSale !== "number") return;
+
+      const daysText = `, всего ${originalDaysOnSale} дней в продаже`;
+      const dateKeywords = [
+        "опубликовано",
+        "обновлено",
+        "часов назад",
+        "день назад",
+        "дня назад",
+        "недель назад",
+        "месяц назад",
+      ];
+
+      // Try multiple selector strategies
+      const selectors = [
+        ".card__stat-item",
+        ".card__date-item",
+        ".card__date",
+        "[class*='stat'][class*='item']",
+        "[class*='date'][class*='item']",
+      ];
+
+      for (const selector of selectors) {
+        const items = document.querySelectorAll(selector);
+        for (const item of items) {
+          const text = item.textContent.toLowerCase();
+          for (const keyword of dateKeywords) {
+            if (text.includes(keyword)) {
+              const currentText = item.textContent.trim();
+              if (!currentText.includes(daysText)) {
+                item.textContent = currentText + daysText;
+              }
+              return;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error displaying originalDaysOnSale:", e);
+    }
+  }
+
   async function init() {
     try {
       const stored = await browser.storage.local.get(STORAGE_KEYS);
@@ -902,6 +958,7 @@ globalThis.browser ??= globalThis.chrome;
       scheduleApply();
       setupObserver();
       setupStorageListener();
+      applyOriginalDaysOnSale();
     } catch (_err) {
       // Ignore storage errors in content context.
     }
