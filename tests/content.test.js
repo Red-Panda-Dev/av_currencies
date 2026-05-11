@@ -894,6 +894,88 @@ describe("av.by content script", () => {
     }
   });
 
+  it("displays originalDaysOnSale in card stats", async () => {
+    const html = `<html><body>
+      <script id="__NEXT_DATA__" type="application/json">
+        {
+          "props": {
+            "initialState": {
+              "advert": {
+                "advert": {
+                  "originalDaysOnSale": 10
+                }
+              }
+            }
+          }
+        }
+      </script>
+      <ul>
+        <li class="card__stat-item">опубликовано 16 апреля</li>
+        <li class="card__stat-item">поднято 4 часа назад</li>
+      </ul>
+    </body></html>`;
+
+    const env = await bootstrapContentScript(html, {
+      ratesData: sampleRates,
+      selectedCurrency: "BYN",
+    });
+
+    try {
+      await flushTicks();
+
+      const statItem =
+        env.dom.window.document.querySelector(".card__stat-item");
+      expect(statItem).not.toBeNull();
+      expect(statItem.textContent).toContain("опубликовано 16 апреля");
+      expect(statItem.textContent).toContain("всего 10 дней в продаже");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("displays originalDaysOnSale in mobile card date-item", async () => {
+    const html = `<html><body>
+      <script id="__NEXT_DATA__" type="application/json">
+        {
+          "props": {
+            "initialState": {
+              "advert": {
+                "advert": {
+                  "originalDaysOnSale": 2
+                }
+              }
+            }
+          }
+        }
+      </script>
+      <div class="card__meta">
+        <ul class="card__stat">
+          <li class="card__stat-item"><button>1827</button></li>
+        </ul>
+        <div class="card__date">
+          <div class="card__date-item">опубликовано 15 часов назад</div>
+        </div>
+      </div>
+    </body></html>`;
+
+    const env = await bootstrapContentScript(html, {
+      ratesData: sampleRates,
+      selectedCurrency: "BYN",
+    });
+
+    try {
+      await flushTicks();
+
+      const dateItem =
+        env.dom.window.document.querySelector(".card__date-item");
+      expect(dateItem).not.toBeNull();
+      expect(dateItem.textContent).toContain("опубликовано 15 часов назад");
+      expect(dateItem.textContent).toContain("всего 2 дней в продаже");
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("converts graph-item prices, graph-log diff, and graph-log sum in long modal", async () => {
     const html = `<html><body>
       <div class="graph">
