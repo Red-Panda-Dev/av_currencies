@@ -2,11 +2,9 @@
   "name": "av-currencies",
   "type": "module",
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "format": "prettier --write 'README.md' 'ARCHITECTURE.md' 'lib/**/*.js' 'content/**/*.js' 'background.js' 'popup/**/*.js' 'popup/**/*.html' 'popup/**/*.css' 'scripts/**/*.mjs' 'tests/**/*.js' 'manifest.json'",
-    "format:check": "prettier --check 'README.md' 'ARCHITECTURE.md' 'lib/**/*.js' 'content/**/*.js' 'background.js' 'popup/**/*.js' 'popup/**/*.html' 'popup/**/*.css' 'scripts/**/*.mjs' 'tests/**/*.js' 'manifest.json'"
+    "test": "vitest run --coverage",
+    "format": "prettier --write 'lib/**/*.js' 'content/**/*.js' 'background.js' 'popup/**/*.js' 'popup/**/*.html' 'popup/**/*.css' 'scripts/**/*.mjs' 'tests/**/*.js' 'manifest.json'",
+    "format:check": "prettier --check ''lib/**/*.js' 'content/**/*.js' 'background.js' 'popup/**/*.js' 'popup/**/*.html' 'popup/**/*.css' 'scripts/**/*.mjs' 'tests/**/*.js' 'manifest.json'"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.5",
