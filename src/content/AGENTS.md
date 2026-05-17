@@ -7,14 +7,14 @@ AV.by content script. Runs in the context of av.by pages to replace BYN prices w
 ## What lives here
 
 ```
-content/
-└── avby.js            # Self-contained IIFE — the entire content script
+src/content/
+└── avby.js            # Self-contained IIFE — the entire content script (968 lines)
 ```
 
 ## Local boundaries and invariants
 
 - **Self-contained IIFE**: this script cannot use ES module `import`/`export`. MV3 content scripts run in an isolated world without module support.
-- **Duplicated helpers**: `parseBynPrice`, `convertFromBYN`, `formatDisplayPrice` are copied from `lib/rates.js`. They must stay in sync — if you change one, change the other.
+- **Duplicated helpers**: `parseBynPrice`, `convertFromBYN`, `formatDisplayPrice` are copied from `src/lib/rates.js`. They must stay in sync — if you change one, change the other.
 - **No network access**: the content script reads rates from `browser.storage.local` only. It never calls `fetch`. If storage is empty, it sends `ensureRates` to the background via `browser.runtime.sendMessage`.
 - **DOM is untrusted**: all price text is parsed from the page DOM. The script never writes `innerHTML` — only `textContent` and `nodeValue` modifications.
 - **Original text preservation**: BYN prices are saved in dataset attributes `avCurrenciesOriginalText` and `avCurrenciesBynAmount` on price elements, and in `WeakMap` instances (`monthlyOriginalText`, `monthlyBynAmount`) for monthly-payment text nodes. A `Set` (`trackedMonthlyNodes`) tracks all registered monthly nodes. These must not be removed — they enable restoring original BYN text when the user switches currency back to BYN.
@@ -30,11 +30,12 @@ content/
   - `GRAPH_LOG_DIFF_SELECTORS` — graph log price differences (`− N р.`)
   - `GRAPH_LOG_SUM_SELECTORS` — graph log price sums
   - `SALON_PRICE_WRAPPER_SELECTOR` — salon price wrappers (suffix "р." handling)
+- **`originalDaysOnSale`**: reads from `__NEXT_DATA__` JSON in the page DOM, appends ", всего N дней в продаже" to matching card stat items. Uses multiple CSS selector fallbacks.
 
 ## Safe change rules
 
 - When adding support for a new AV.by page section, add the selector to the appropriate selector constant at the top of the script, then add handling in `applyAll()` if needed.
-- When changing conversion math, update the duplicated helpers here AND in `lib/rates.js`, then run both test suites.
+- When changing conversion math, update the duplicated helpers here AND in `src/lib/rates.js`, then run both test suites.
 - Do not add `fetch`, `XMLHttpRequest`, or any network calls to this file.
 - Do not add `innerHTML` assignments — use `textContent` and `nodeValue` only.
 
@@ -50,5 +51,5 @@ npm test                                # Run all tests
 ## Nearby docs
 
 - `ARCHITECTURE.md` — section 4 covers the AV.by price replacement data flow
-- `lib/rates.js` — source of truth for the duplicated helpers
+- `src/lib/rates.js` — source of truth for the duplicated helpers
 - `examples/` — HTML fixtures used by `tests/content.test.js`
