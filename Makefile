@@ -1,8 +1,7 @@
-.PHONY: test lint build build-chrome package-firefox package-chrome clean run run-chrome run-android run-android-nightly android-log android-enable-debug-emulator format format-check test-coverage
+.PHONY: test lint build build-chrome package-firefox package-chrome clean run run-chrome run-android run-android-nightly android-log android-enable-debug-emulator format format-check
 
 EXT_DIR := .
 BUILD_DIR := build
-FIREFOX_BUILD_DIR := $(BUILD_DIR)/firefox
 CHROME_BUILD_DIR := $(BUILD_DIR)/chrome
 EXT_NAME := av-currencies
 EXT_ID := av-by-currencies@redpandadev
@@ -12,38 +11,23 @@ CHROME_BIN ?= chromium
 CHROME_PROFILE_DIR ?= /tmp/$(EXT_NAME)-chrome-profile
 
 test:
-	npm run test:coverage
-
-test-coverage:
-	npm run test:coverage
+	npm run test
 
 format:
 	npm run format
 
-format-check:
+lint:
 	npm run format:check
 
-lint:
-	npx web-ext lint --source-dir $(EXT_DIR) --ignore-files "coverage/**" "node_modules/**" "tests/**" "examples/**" "build/**" "*.zip"
-
 package-firefox:
-	rm -rf $(FIREFOX_BUILD_DIR)
-	mkdir -p $(FIREFOX_BUILD_DIR)
-	cp -r manifest.json background.js lib content popup icons $(FIREFOX_BUILD_DIR)/
-	cp examples/nbrb_response.json $(FIREFOX_BUILD_DIR)/
-	rm -f $(EXT_NAME)-firefox.zip
-	cd $(FIREFOX_BUILD_DIR) && zip -r ../../$(EXT_NAME)-firefox.zip .
-	@echo "Built: $(EXT_NAME)-firefox.zip"
+	npm run package:firefox
 
-build-chrome: format-check lint test package-chrome
+build-chrome: format lint test package-chrome
 
 package-chrome:
-	node scripts/build-chrome.mjs
-	rm -f $(EXT_NAME)-chrome.zip
-	cd $(CHROME_BUILD_DIR) && zip -r ../../$(EXT_NAME)-chrome.zip . -x "*_metadata*"
-	@echo "Built: $(EXT_NAME)-chrome.zip"
+	npm run package:chrome
 
-build: format-check lint test package-firefox package-chrome
+build: format lint test package-firefox package-chrome
 
 clean:
 	rm -rf $(BUILD_DIR) coverage
