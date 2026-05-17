@@ -458,12 +458,14 @@ Omit empty sections.
 
 ```md
 ---
+
 version: <version or unknown>
 date_from: <YYYY-MM-DD or ref>
 date_to: <YYYY-MM-DD or ref>
 tags: release-notes
 release_title_ru: "<2–5 слов>"
 release_title_en: "<2–5 words>"
+
 ---
 
 # <release_title_ru>
@@ -595,12 +597,14 @@ Use:
 
 ```yaml
 ---
+
 version: <version or unknown>
 date_from: <YYYY-MM-DD or ref>
 date_to: <YYYY-MM-DD or ref>
 tags: release-notes
 release_title_ru: "<2–5 слов>"
 release_title_en: "<2–5 words>"
+
 ---
 ```
 
