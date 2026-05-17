@@ -9,7 +9,7 @@
     "format:check": "prettier --check 'README.md' 'ARCHITECTURE.md' 'lib/**/*.js' 'content/**/*.js' 'background.js' 'popup/**/*.js' 'popup/**/*.html' 'popup/**/*.css' 'scripts/**/*.mjs' 'tests/**/*.js' 'manifest.json'"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.5",
+    "@vitest/coverage-v8": "^4.1.6",
     "jsdom": "^29.1.1",
     "prettier": "^3.8.3",
     "vitest": "^4.1.5"
