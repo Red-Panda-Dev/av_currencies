@@ -10,9 +10,9 @@
     "package": "npm run package:chrome && npm run package:firefox"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.5",
+    "@vitest/coverage-v8": "^4.1.6",
     "jsdom": "^29.1.1",
     "prettier": "^3.8.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.6"
   }
 }
