@@ -5,7 +5,7 @@ import { JSDOM } from "jsdom";
 import { describe, it, expect } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const scriptPath = join(__dirname, "..", "content", "avby.js");
+const scriptPath = join(__dirname, "..", "src", "content", "avby.js");
 const indexFixturePath = join(__dirname, "..", "examples", "index.html");
 const autoCardFixturePath = join(__dirname, "..", "examples", "auto_card.html");
 const newCarsListFixturePath = join(

@@ -16,7 +16,7 @@ import {
   DISPLAY_CURRENCIES,
   SCALE_LABELS,
   CURRENCY_SYMBOLS,
-} from "../lib/rates.js";
+} from "../src/lib/rates.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturePath = join(__dirname, "..", "examples", "nbrb_response.json");
