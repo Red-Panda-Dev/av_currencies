@@ -1,5 +1,8 @@
 # AV.by Валюты
 
+![Mozilla Add-on Users](https://img.shields.io/amo/users/av-by-валюты?logo=firefoxbrowser&logoColor=#FF7139)
+![Chrome Web Store Users](https://img.shields.io/chrome-web-store/users/nghinljmkmfpnmmkohokkeeomglpogin?logo=chromewebstore&logoColor=#4285F4)
+
 [![](icons/marquee_promo_tile_raw.png)](icons/marquee_promo_tile_raw.png)
 
 Браузерное расширение (Manifest V3) для Firefox и Chrome-based браузеров, которое автоматически заменяет цены на AV.by из белорусских рублей (BYN) в выбранную валюту: USD, EUR или RUB. Курсы берутся из публичного API Национального банка Республики Беларусь.
