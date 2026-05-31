@@ -77,6 +77,7 @@ globalThis.browser ??= globalThis.chrome;
   let fullMonthlyScanRequested = true;
   const vinReadRequestedPages = new Set();
   const vinSubmitRequestedPages = new Set();
+  const vinByPageId = new Map();
 
   function normalizeVinFeatureEnabled(value) {
     return value === true;
@@ -106,16 +107,32 @@ globalThis.browser ??= globalThis.chrome;
     element.textContent = vin;
   }
 
+  function applyWorkerVinForPage(pageId) {
+    if (!pageId || !vinByPageId.has(pageId)) return;
+    const vin = vinByPageId.get(pageId);
+    if (!vin) return;
+
+    const elements = document.querySelectorAll(VIN_BUTTON_SELECTOR);
+    for (const element of elements) {
+      const prefix = getMaskedVinPrefix(element);
+      if (!prefix || !vin.startsWith(prefix)) continue;
+      applyVinFromWorker(element, vin);
+    }
+  }
+
   function findRevealedVinOnPage() {
     const button = document.querySelector(VIN_BUTTON_SELECTOR);
     if (!button) return null;
+
     return normalizeVin(button.textContent || "");
   }
 
   function requestVinFromWorkerForPage() {
-    if (!vinFeatureEnabled || !browser.runtime?.sendMessage) return;
+    if (!vinFeatureEnabled) return;
+    if (!browser.runtime?.sendMessage) return;
     const pageId = getPageIdFromLocation();
-    if (!pageId || vinReadRequestedPages.has(pageId)) return;
+    if (!pageId) return;
+    if (vinReadRequestedPages.has(pageId)) return;
     vinReadRequestedPages.add(pageId);
 
     browser.runtime
@@ -129,20 +146,20 @@ globalThis.browser ??= globalThis.chrome;
           return;
         }
 
-        const button = document.querySelector(VIN_BUTTON_SELECTOR);
-        if (!button) return;
-        const prefix = getMaskedVinPrefix(button);
         const vin = normalizeVin(response.data.vin);
-        if (!vin || !prefix || !vin.startsWith(prefix)) return;
-        applyVinFromWorker(button, vin);
+        if (!vin) return;
+        vinByPageId.set(pageId, vin);
+        applyWorkerVinForPage(pageId);
       })
       .catch(() => {});
   }
 
   function submitRevealedVinIfNeeded() {
-    if (!vinFeatureEnabled || !browser.runtime?.sendMessage) return;
+    if (!vinFeatureEnabled) return;
+    if (!browser.runtime?.sendMessage) return;
     const pageId = getPageIdFromLocation();
-    if (!pageId || vinSubmitRequestedPages.has(pageId)) return;
+    if (!pageId) return;
+    if (vinSubmitRequestedPages.has(pageId)) return;
     const vin = findRevealedVinOnPage();
     if (!vin) return;
     submitVinToWorker(pageId, vin);
@@ -834,6 +851,8 @@ globalThis.browser ??= globalThis.chrome;
     applyGraphLogSumPrices(graphLogSumElements);
 
     applySalonPriceSuffixes();
+    const pageId = getPageIdFromLocation();
+    applyWorkerVinForPage(pageId);
     requestVinFromWorkerForPage();
     submitRevealedVinIfNeeded();
 

@@ -253,6 +253,42 @@ describe("av.by content script", () => {
     }
   });
 
+  it("replaces mobile VIN button inserted after worker response", async () => {
+    const env = await bootstrapContentScript(
+      "<main></main>",
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "BYN",
+        vinFeatureEnabled: true,
+      },
+      {
+        url: "https://cars.av.by/chrysler/pacifica/131905951",
+        getVinForPageResponse: {
+          success: true,
+          data: {
+            exists: true,
+            pageId: "131905951",
+            vin: "2C8GF68ABC1234567",
+          },
+        },
+      },
+    );
+
+    try {
+      await flushTicks();
+      env.dom.window.document.body.insertAdjacentHTML(
+        "beforeend",
+        '<header class="card-vin__header"><div class="card-vin__desk"><h2 class="card-vin__title">Проверьте историю&nbsp;транспорта по&nbsp;VIN</h2></div><div class="card-vin__action"><button class="card-vin__button" type="button"><span><b>2C8GF68</b><span>**********</span><small>Открыть весь</small></span></button></div></header>',
+      );
+      await flushTicks();
+
+      const button = env.dom.window.document.querySelector(".card-vin__button");
+      expect(button.textContent).toBe("2C8GF68ABC1234567");
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("requests and submits VIN when vin feature is enabled", async () => {
     const env = await bootstrapContentScript(
       '<button class="card-vin__number">WBA7C81040G494032</button>',
