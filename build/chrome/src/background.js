@@ -2,14 +2,14 @@ globalThis.browser ??= globalThis.chrome;
 
 import { TARGET_CURRENCIES, parseRates } from "./lib/rates.js";
 
-const API_URL = "https://api.nbrb.by/exrates/rates?periodicity=0";
-const ALARM_NAME = "nbrb-rates-refresh";
-const ALARM_INTERVAL_MINUTES = 240;
-const FETCH_TIMEOUT_MS = 10000;
+export const API_URL = "https://api.nbrb.by/exrates/rates?periodicity=0";
+export const ALARM_NAME = "nbrb-rates-refresh";
+export const ALARM_INTERVAL_MINUTES = 240;
+export const FETCH_TIMEOUT_MS = 10000;
 
 let fetchInProgress = null;
 
-async function fetchRates({ force = false } = {}) {
+export async function fetchRates({ force = false } = {}) {
   if (fetchInProgress && !force) return fetchInProgress;
 
   fetchInProgress = (async () => {
@@ -70,7 +70,7 @@ async function fetchRates({ force = false } = {}) {
   return fetchInProgress;
 }
 
-async function ensureAlarm() {
+export async function ensureAlarm() {
   const alarm = await browser.alarms.get(ALARM_NAME);
   if (!alarm) {
     browser.alarms.create(ALARM_NAME, {

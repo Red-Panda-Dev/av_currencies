@@ -25,6 +25,7 @@ globalThis.browser ??= globalThis.chrome;
     ".card-finance__description span",
     ".stats__price-primary",
     ".stats-listing-item__prices",
+    ".card__commercial-price b",
   ];
   const MONTHLY_ELEMENT_SELECTORS = [
     ".card__commercial-text > span:last-child",

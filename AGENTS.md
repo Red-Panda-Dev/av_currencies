@@ -23,7 +23,8 @@ scripts/
 └── package-utils.mjs      # Shared build utilities (zip creation, AGENTS.md stripping)
 tests/
 ├── parse.test.js          # Vitest tests for lib/rates.js
-└── content.test.js        # Vitest + jsdom tests for content/avby.js
+├── content.test.js        # Vitest + jsdom tests for content/avby.js
+└── background.test.js     # Vitest tests for background.js (vi.hoisted mocks for browser/fetch)
 examples/                  # Test fixtures: NBRB API response and saved AV.by HTML pages
 vitest.config.js           # Vitest config with 80% coverage threshold on lib/
 ```
@@ -54,7 +55,7 @@ Read `ARCHITECTURE.md` for the full component model, data flow, and invariants.
 - Failed API responses must not overwrite previously stored valid rates — only `lastError` is updated on failure
 - `src/lib/rates.js` must remain importable in plain Node.js without mocks or polyfills
 - The only host permissions are `https://api.nbrb.by/*` and `https://av.by/*` — do not add additional host permissions without justification
-- Test coverage for `lib/` must stay at or above 80% on all metrics (lines, functions, branches, statements)
+- Test coverage for `lib/` and `background.js` must stay at or above 80% on all metrics (lines, functions, branches, statements) — configured in `vitest.config.js`
 - When changing shared logic (`parseBynPrice`, `convertFromBYN`, `formatDisplayPrice`), update both `src/lib/rates.js` and `src/content/avby.js` to keep them in sync
 - Build scripts strip `AGENTS.md` files from packaging directories via `removeAgentsFiles()` in `scripts/package-utils.mjs`
 
