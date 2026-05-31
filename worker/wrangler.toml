@@ -1,0 +1,27 @@
+name = "av-currencies-vin"
+main = "src/index.ts"
+compatibility_date = "2026-05-31"
+
+[vars]
+ALLOWED_ORIGINS = "chrome-extension://*,moz-extension://*"
+
+[[kv_namespaces]]
+binding = "VIN_DATA"
+id = "d6d376ea1b7541a5a97f7e5ac299b01f"
+
+[[secrets_store_secrets]]
+binding = "IDENTITY_SALT"
+store_id = "629e5dd6594845a889e6ddabb26cc009"
+secret_name = "AV_BY_USERS_SALT"
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+
+[placement]
+mode = "smart"
