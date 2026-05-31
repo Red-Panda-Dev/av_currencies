@@ -2,7 +2,6 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
@@ -77,14 +76,26 @@
           <option value="EUR">EUR</option>
           <option value="RUB">RUB</option>
         </select>
-        <label class="settings__label" for="vin-feature-enabled">
-          Показывать полный VIN (если доступен) и отправлять открытый VIN
-        </label>
-        <input
-          id="vin-feature-enabled"
-          type="checkbox"
-          aria-label="Включить функцию VIN"
-        />
+        <div class="settings__vin-block">
+          <label class="settings__vin-row" for="vin-feature-enabled">
+            <input
+              id="vin-feature-enabled"
+              type="checkbox"
+              aria-label="Включить сохранение VIN"
+            />
+            <span>
+              Сохранение VIN: показывать полный идентификационный номер (если
+              доступен) и отправлять открытый номер.
+              <a
+                class="settings__vin-link"
+                href="https://github.com/Red-Panda-Dev/av_currencies/blob/main/VIN-LOGIC.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Описание логики</a
+              >
+            </span>
+          </label>
+        </div>
       </section>
 
       <footer class="footer">
