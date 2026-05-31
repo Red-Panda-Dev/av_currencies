@@ -2,113 +2,108 @@
 
 ## Repository overview
 
-Cross-browser WebExtension (Manifest V3) for Firefox and Chrome-based browsers, replacing BYN prices on AV.by with USD/EUR/RUB equivalents from the NBRB API. Also provides a popup with exchange rates and a currency converter. UI is in Russian. Offline-resilient: cached rates persist across network failures.
+Cross-browser WebExtension (Manifest V3) for Firefox and Chrome-based browsers. It replaces BYN prices on AV.by with USD/EUR/RUB equivalents from the NBRB API, provides a Russian-language popup with rates and a converter, and supports an optional VIN sharing feature through a separate Cloudflare Worker in `worker/`.
 
-The extension communicates with a separate Cloudflare Worker (`worker/`) for optional VIN functionality.
+Rates are offline-resilient: failed refreshes must preserve the last valid cached rates in `browser.storage.local`.
 
 ## Where to work
 
-```
+```text
 src/
-├── background.js          # Background event page: fetch, alarms, storage, messaging, VIN proxy
+├── background.js          # Background event page: NBRB fetch, alarms, storage, messaging, VIN proxy
 ├── lib/
-│   └── rates.js           # Pure logic: parsing, conversion, formatting — no browser APIs
+│   └── rates.js           # Pure parsing/conversion/formatting logic; no browser APIs
 ├── content/
-│   └── avby.js            # AV.by content script: DOM price replacement (self-contained IIFE)
+│   ├── AGENTS.md          # Content-script-specific DOM and AV.by rules
+│   └── avby.js            # Self-contained AV.by content script IIFE
 └── popup/
-    ├── popup.html         # Popup markup
-    ├── popup.css          # Styling with light/dark theme support
-    └── popup.js           # Popup controller: render, converter, refresh
-
-scripts/
-├── build-chrome.mjs       # Chrome build: copies files, transforms manifest, writes install note
-├── build-firefox.mjs      # Firefox build: copies files, creates zip
-└── package-utils.mjs      # Shared build utilities (zip creation, AGENTS.md stripping)
+    ├── AGENTS.md          # Popup-local UI, storage, and test rules
+    ├── popup.html         # Russian popup markup
+    ├── popup.css          # Popup styling with light/dark theme support
+    └── popup.js           # Popup controller and storage/message handling
 
 tests/
-├── parse.test.js          # Vitest tests for lib/rates.js
-├── content.test.js        # Vitest + jsdom tests for content/avby.js
-└── background.test.js     # Vitest tests for background.js (vi.hoisted mocks for browser/fetch)
+├── AGENTS.md              # Test harness and mocking details
+├── parse.test.js          # `src/lib/rates.js` pure-function tests
+├── background.test.js     # Background tests with hoisted browser/fetch mocks
+├── content.test.js        # JSDOM content-script tests using AV.by fixtures
+└── popup.test.js          # JSDOM popup tests using popup markup
 
-examples/                  # Test fixtures: NBRB API response and saved AV.by HTML pages
+worker/
+├── AGENTS.md              # Cloudflare Worker-specific guidance
+├── src/                   # Worker TypeScript source for VIN API
+├── test/                  # Worker Vitest tests
+├── wrangler.toml          # Worker routes, KV, vars, secrets-store binding, observability
+└── deploy.sh              # Builds then deploys the Worker
 
-worker/                    # Cloudflare Worker for VIN functionality
-├── src/
-│   ├── index.ts           # Main worker entrypoint with fetch handler
-│   ├── crypto.ts          # Identity hashing utilities
-│   ├── rateLimit.ts       # Rate limiting logic (read/write)
-│   ├── storage.ts         # KV storage operations
-│   ├── types.ts           # TypeScript type definitions
-│   └── validation.ts       # Input validation and normalization
-├── test/
-│   └── worker.test.ts     # Vitest tests for worker endpoints
-├── package.json           # Worker dependencies and scripts
-├── wrangler.jsonc         # Cloudflare Workers configuration
-└── tsconfig.json          # TypeScript configuration
-
-vitest.config.js           # Vitest config with 80% coverage threshold on lib/
+scripts/                   # Browser packaging scripts and shared package utilities
+examples/                  # NBRB fixture and saved AV.by HTML test fixtures
+icons/                     # Extension icons
 ```
 
-Generated artifacts (do not hand-edit):
-```
-build/firefox/             # Firefox packaging directory
-build/chrome/              # Chrome packaging directory with generated manifest.json
-av-currencies-firefox.zip  # Firefox package
-av-currencies-chrome.zip   # Chrome-based package
+Generated artifacts; do not hand-edit:
+
+```text
+build/firefox/
+build/chrome/
+coverage/
+worker/coverage/
+av-currencies-firefox.zip
+av-currencies-chrome.zip
 ```
 
 ## Architecture and boundaries
 
-- `src/lib/rates.js` has **zero** browser API dependencies — never add `browser.*`, `document`, `fetch`, or `window` references to it
-- Background and popup communicate **only** via `browser.runtime.sendMessage` — never import one from the other
-- All `fetch` calls live in `src/background.js` only — popup never calls `fetch` directly
-- Popup uses `textContent` exclusively — never `innerHTML` (XSS prevention)
-- No remote code, no CDN scripts, no inline event handlers
-- `src/content/avby.js` is a self-contained IIFE — it cannot import ES modules because MV3 content scripts run in isolation. It has **duplicated copies** of `parseBynPrice`, `convertFromBYN`, and `formatDisplayPrice` from `src/lib/rates.js`. Changes to these functions in `src/lib/rates.js` must be mirrored here.
-- `manifest.json` is the source-of-truth manifest. Chrome build manifest is generated by `scripts/build-chrome.mjs` — do not hand-edit generated files in `build/chrome/`.
-- All source entrypoints (`background.js`, `content/avby.js`, `popup/popup.js`) include `globalThis.browser ??= globalThis.chrome;` shim for cross-browser compatibility.
-- `worker/` is an independent Cloudflare Worker project — it has its own `package.json`, TypeScript config, and deployment via Wrangler. See `worker/AGENTS.md` for worker-specific guidance.
-
-Read `ARCHITECTURE.md` for the full component model, data flow, and invariants.
+- `src/lib/rates.js` must remain importable in plain Node.js; do not add `browser.*`, `document`, `fetch`, or `window` references there.
+- Network fetches for extension code belong in `src/background.js`. The popup and content script communicate through `browser.runtime.sendMessage` and storage.
+- Popup DOM updates use `textContent`; do not introduce `innerHTML` or inline event handlers.
+- `src/content/avby.js` is a self-contained IIFE, not an ES module. It duplicates `parseBynPrice`, `convertFromBYN`, and `formatDisplayPrice` from `src/lib/rates.js`; keep both copies in sync.
+- `manifest.json` is the source manifest. `scripts/build-chrome.mjs` generates the Chrome build manifest in `build/chrome/`.
+- Source entrypoints use `globalThis.browser ??= globalThis.chrome;` for Firefox/Chrome API compatibility.
+- `worker/` is an independent Cloudflare Worker project with its own `package.json`, TypeScript config, Vitest config, and Wrangler deployment.
 
 ## Change rules
 
-- Failed API responses must not overwrite previously stored valid rates — only `lastError` is updated on failure
-- `src/lib/rates.js` must remain importable in plain Node.js without mocks or polyfills
-- The only host permissions are `https://api.nbrb.by/*` and `https://vin-api.redpandadev.workers.dev/*` — do not add additional host permissions without justification
-- Test coverage for `lib/` and `background.js` must stay at or above 80% on all metrics (lines, functions, branches, statements) — configured in `vitest.config.js`
-- When changing shared logic (`parseBynPrice`, `convertFromBYN`, `formatDisplayPrice`), update both `src/lib/rates.js` and `src/content/avby.js` to keep them in sync
-- Build scripts strip `AGENTS.md` files from packaging directories via `removeAgentsFiles()` in `scripts/package-utils.mjs`
+- Failed NBRB responses must update `lastError` only; never overwrite previously valid `ratesData` on failure.
+- `parseRates` expects NBRB PascalCase fields: `Cur_Abbreviation`, `Cur_Scale`, `Cur_OfficialRate`.
+- RUB has `Cur_Scale` 100; conversion must account for `scale` in both directions.
+- `TARGET_CURRENCIES` is `["USD", "EUR", "RUB"]`; missing any of the three makes `parseRates` return `null`.
+- Keep the only extension `host_permissions` limited to the NBRB API and the VIN Worker API unless a new permission is explicitly justified in `manifest.json`.
+- Preserve Russian UI strings when editing popup markup, popup logic, content-script messages, and user-facing docs.
+- Build scripts call `removeAgentsFiles()` from `scripts/package-utils.mjs`; packaged extension directories should not contain `AGENTS.md` files.
 
 ## Validation
 
 ```bash
-npm test                  # Run tests
-npm run test:coverage     # Run tests with coverage (enforces 80% threshold on lib/)
-npm run format:check      # Check formatting
-npm run format            # Auto-format
-make lint                 # web-ext lint (extension-specific checks)
-make build                # Full Firefox pipeline: format-check + lint + test + zip
-make build-chrome         # Full Chrome pipeline: format-check + lint + test + zip
-make build-all            # Full dual-browser pipeline
+npm test                  # Run extension Vitest suite with coverage
+npm run format:check      # Check formatting for source, scripts, tests, worker TS, manifest
+npm run format            # Apply Prettier to the configured files
+npm run package:firefox   # Build Firefox package output
+npm run package:chrome    # Build Chrome package output
+npm run package           # Build both browser packages
+make lint                 # Makefile alias for format check
+make build                # Format, lint, test, then package Firefox and Chrome
+make build-chrome         # Format, lint, test, then package Chrome
+make test-worker          # Run Worker tests from worker/
 ```
+
+Worker-only validation is documented in `worker/AGENTS.md`.
 
 ## Key docs
 
-- `ARCHITECTURE.md` — full architecture, data flow, invariants, code map
-- `examples/nbrb_response.json` — real NBRB API response fixture used by tests
-- `manifest.json` — extension permissions, entrypoints, version
-- `Makefile` — build/run/lint/test commands
-- `worker/AGENTS.md` — Cloudflare Worker specifics
+- `ARCHITECTURE.md` — component model, data flow, and invariants.
+- `README.md` — user-facing Russian documentation, module summary, privacy notes, extension links.
+- `VIN-LOGIC.md` — user-facing explanation of optional VIN sharing behavior.
+- `manifest.json` — extension permissions, entrypoints, Firefox ID, content-script matches.
+- `Makefile` and `package.json` — discoverable validation, packaging, and run commands.
+- `worker/README.md` — Worker business logic, storage, API base URL, CORS, secrets.
 
 ## Repository-specific gotchas
 
-- NBRB API uses `Cur_Abbreviation`, `Cur_Scale`, `Cur_OfficialRate` — PascalCase field names from the upstream API
-- RUB rate has scale 100 (not 1) — conversion must divide by scale: `(amount * rate) / scale`
-- `TARGET_CURRENCIES` is `["USD", "EUR", "RUB"]` — `parseRates` returns `null` if any of the three are missing from the API response
-- UI strings are in Russian — preserve Russian text when editing popup markup or JS
-- Alarm interval is 240 minutes (4 hours) — configured as `ALARM_INTERVAL_MINUTES` in `src/background.js`
-- Content script uses `MutationObserver` with subtree and `characterData` observation — test changes with dynamic DOM (infinite scroll, SPA navigation, live text edits)
-- Content script preserves original BYN text via dataset attributes (`avCurrenciesOriginalText`, `avCurrenciesBynAmount`) on elements, `WeakMap` instances (`monthlyOriginalText`, `monthlyBynAmount`) for monthly-payment text nodes, and a `Set` (`trackedMonthlyNodes`) to track registered nodes — do not remove these mechanisms
-- `src/content/avby.js` also handles `originalDaysOnSale` from `__NEXT_DATA__` — appends ", всего N дней в продаже" to card stat items
-- Worker VIN API at `https://vin-api.redpandadev.workers.dev/` — extension proxies VIN requests through background to this Worker
+- Alarm interval is 240 minutes (`ALARM_INTERVAL_MINUTES` in `src/background.js`).
+- `VIN_WORKER_API_BASE` is `https://avby.currencies-bel.top`; keep it aligned with `manifest.json`, Worker routes, and tests.
+- `vinFeatureEnabled` defaults to off and is stored in `browser.storage.local`.
+- Content-script original BYN text restoration relies on dataset fields, `WeakMap` state for text nodes, and tracked monthly nodes; do not remove those mechanisms.
+- Content script also reads `originalDaysOnSale` from `__NEXT_DATA__` and appends `, всего N дней в продаже` to matching card stats.
+- `tests/content.test.js` executes the content script source in JSDOM; if the content script uses new browser APIs, its local browser mock must be extended.
+- `tests/background.test.js` imports `src/background.js` after `vi.hoisted()` globals because background code registers browser listeners at module load time.

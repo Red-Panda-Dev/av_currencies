@@ -2,54 +2,42 @@
 
 ## Scope
 
-AV.by content script. Runs in the context of av.by pages to replace BYN prices with the user's selected display currency.
+AV.by content script in `src/content/`. It runs on `https://*.av.by/*` at `document_idle` and replaces BYN prices with the selected display currency.
 
 ## What lives here
 
-```
+```text
 src/content/
-└── avby.js            # Self-contained IIFE — the entire content script (968 lines)
+└── avby.js            # Self-contained IIFE for DOM scanning, conversion, VIN UI, observers
 ```
 
 ## Local boundaries and invariants
 
-- **Self-contained IIFE**: this script cannot use ES module `import`/`export`. MV3 content scripts run in an isolated world without module support.
-- **Duplicated helpers**: `parseBynPrice`, `convertFromBYN`, `formatDisplayPrice` are copied from `src/lib/rates.js`. They must stay in sync — if you change one, change the other.
-- **No network access**: the content script reads rates from `browser.storage.local` only. It never calls `fetch`. If storage is empty, it sends `ensureRates` to the background via `browser.runtime.sendMessage`.
-- **DOM is untrusted**: all price text is parsed from the page DOM. The script never writes `innerHTML` — only `textContent` and `nodeValue` modifications.
-- **Original text preservation**: BYN prices are saved in dataset attributes `avCurrenciesOriginalText` and `avCurrenciesBynAmount` on price elements, and in `WeakMap` instances (`monthlyOriginalText`, `monthlyBynAmount`) for monthly-payment text nodes. A `Set` (`trackedMonthlyNodes`) tracks all registered monthly nodes. These must not be removed — they enable restoring original BYN text when the user switches currency back to BYN.
-- **MutationObserver**: observes `document.body` with `{ childList: true, subtree: true, characterData: true }`. Processes newly added nodes, attribute changes, and live text edits. Be careful not to trigger infinite loops — the script guards against re-processing already-converted elements.
-- **Selector categories**: each has its own collection and processing function:
-  - `PRICE_SELECTORS` — main price elements (listings, cards, salons, stats)
-  - `MONTHLY_ELEMENT_SELECTORS` — monthly payment text containers
-  - `FINANCE_RANGE_SELECTORS` — finance range blocks (`… BYN`)
-  - `FINANCE_DESCRIPTION_SELECTORS` — finance descriptions with inline BYN ranges
-  - `PRICE_HISTORY_DESC_SELECTORS` — price history description cells (BYN only or `BYN ≈ USD` dual)
-  - `STATS_SECONDARY_SELECTORS` — secondary stats prices (`≈ N $`)
-  - `GRAPH_ITEM_PRICE_SELECTORS` — graph item price labels
-  - `GRAPH_LOG_DIFF_SELECTORS` — graph log price differences (`− N р.`)
-  - `GRAPH_LOG_SUM_SELECTORS` — graph log price sums
-  - `SALON_PRICE_WRAPPER_SELECTOR` — salon price wrappers (suffix "р." handling)
-- **`originalDaysOnSale`**: reads from `__NEXT_DATA__` JSON in the page DOM, appends ", всего N дней в продаже" to matching card stat items. Uses multiple CSS selector fallbacks.
+- `avby.js` is not an ES module. Do not add `import` or `export`; browser API compatibility comes from `globalThis.browser ??= globalThis.chrome;`.
+- The content script does not fetch network resources. It reads `ratesData`, `selectedCurrency`, and `vinFeatureEnabled` from storage and asks background for `ensureRates`, `getVinForPage`, and `submitVinForPage`.
+- DOM writes must use `textContent` or `nodeValue`, not `innerHTML`.
+- The local copies of `parseBynPrice`, `convertFromBYN`, and `formatDisplayPrice` must stay behaviorally aligned with `src/lib/rates.js`.
+- Original BYN text restoration depends on element dataset fields, `WeakMap` state for text nodes, and tracked monthly nodes. Preserve those mechanisms when changing selectors or processing flow.
+- `MutationObserver` watches `document.body` for child-list and character-data changes. Avoid changes that reprocess converted text indefinitely.
+- `originalDaysOnSale` is read from `__NEXT_DATA__` and appended as `, всего N дней в продаже` to matching card stats.
 
 ## Safe change rules
 
-- When adding support for a new AV.by page section, add the selector to the appropriate selector constant at the top of the script, then add handling in `applyAll()` if needed.
-- When changing conversion math, update the duplicated helpers here AND in `src/lib/rates.js`, then run both test suites.
-- Do not add `fetch`, `XMLHttpRequest`, or any network calls to this file.
-- Do not add `innerHTML` assignments — use `textContent` and `nodeValue` only.
+- Add new AV.by markup support by extending the relevant selector group and processing path; do not mix unrelated page-section logic into an existing branch just because selectors match today.
+- If conversion parsing or display formatting changes, update both this file and `src/lib/rates.js`, then run parsing and content tests.
+- Keep VIN feature behavior gated by `vinFeatureEnabled`; the default is off.
+- Preserve Russian user-facing messages and AV.by-specific text fragments.
 
 ## Validation
 
-Tests live in `tests/content.test.js`. They load this script via `readFileSync` and execute it in a JSDOM environment with browser API mocks. Fixtures (saved AV.by HTML pages) are in `examples/`.
-
 ```bash
-npx vitest run tests/content.test.js   # Run content script tests only
-npm test                                # Run all tests
+npx vitest run tests/content.test.js   # Content-script tests only
+npm test                               # Full extension suite with coverage
 ```
 
 ## Nearby docs
 
-- `ARCHITECTURE.md` — section 4 covers the AV.by price replacement data flow
-- `src/lib/rates.js` — source of truth for the duplicated helpers
-- `examples/` — HTML fixtures used by `tests/content.test.js`
+- `ARCHITECTURE.md` — content-script data flow and invariants.
+- `tests/content.test.js` — JSDOM harness, browser mock, AV.by fixture usage.
+- `examples/` — saved AV.by pages used by content tests.
+- `src/lib/rates.js` — pure source for duplicated conversion helpers.
