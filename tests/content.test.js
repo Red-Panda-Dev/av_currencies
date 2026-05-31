@@ -223,9 +223,9 @@ describe("av.by content script", () => {
     }
   });
 
-  it("replaces hidden VIN with worker VIN when vin feature is enabled", async () => {
+  it("renders worker VIN as plain text when vin feature is enabled", async () => {
     const env = await bootstrapContentScript(
-      '<button class="card-vin__number">WBA7C8******494032</button>',
+      '<div class="card-vin__action"><button class="card-vin__number">WBA7C8******494032</button><div class="card-vin__wrap"><button class="button button--secondary button--small" type="button">Купить полный отчёт</button></div></div>',
       {
         ratesData: sampleRates,
         selectedCurrency: "BYN",
@@ -246,8 +246,14 @@ describe("av.by content script", () => {
 
     try {
       await flushTicks();
-      const button = env.dom.window.document.querySelector(".card-vin__number");
-      expect(button.textContent).toBe("WBA7C81040G494032");
+
+      const action = env.dom.window.document.querySelector(".card-vin__action");
+      const vinText = action.querySelector(":scope > span");
+      expect(vinText).not.toBeNull();
+      expect(vinText.textContent).toBe("WBA7C81040G494032");
+      expect(action.querySelector(":scope > .card-vin__number")).toBeNull();
+      expect(action.querySelector(":scope > .card-vin__button")).toBeNull();
+      expect(action.querySelector(".card-vin__wrap")).not.toBeNull();
     } finally {
       env.cleanup();
     }
@@ -278,12 +284,74 @@ describe("av.by content script", () => {
       await flushTicks();
       env.dom.window.document.body.insertAdjacentHTML(
         "beforeend",
-        '<header class="card-vin__header"><div class="card-vin__desk"><h2 class="card-vin__title">Проверьте историю&nbsp;транспорта по&nbsp;VIN</h2></div><div class="card-vin__action"><button class="card-vin__button" type="button"><span><b>2C8GF68</b><span>**********</span><small>Открыть весь</small></span></button></div></header>',
+        '<header class="card-vin__header"><div class="card-vin__desk"><h2 class="card-vin__title">Проверьте историю&nbsp;транспорта по&nbsp;VIN</h2></div><div class="card-vin__action"><button class="card-vin__button" type="button"><span><b>2C8GF68</b><span>**********</span><small>Открыть весь</small></span></button><div class="card-vin__wrap"><a href="https://av.by/vin/example" class="button button--profile button--icon button--small" target="_blank" to=""><span class="button__text">Пример отчёта</span></a><button class="button button--secondary button--small" type="button">Купить полный отчёт</button></div></div></header>',
       );
       await flushTicks();
 
-      const button = env.dom.window.document.querySelector(".card-vin__button");
-      expect(button.textContent).toBe("2C8GF68ABC1234567");
+      const action = env.dom.window.document.querySelector(".card-vin__action");
+      const vinText = action.querySelector(":scope > span");
+      const wrap = action.querySelector(":scope > .card-vin__wrap");
+      expect(action.querySelector(":scope > .card-vin__number")).toBeNull();
+      expect(action.querySelector(":scope > .card-vin__button")).toBeNull();
+      expect(vinText).not.toBeNull();
+      expect(vinText.textContent).toBe("2C8GF68ABC1234567");
+      expect(wrap).not.toBeNull();
+      expect(wrap.querySelector("a")?.getAttribute("href")).toBe(
+        "https://av.by/vin/example",
+      );
+      expect(wrap.querySelector("button")?.textContent).toBe(
+        "Купить полный отчёт",
+      );
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("does not queue VIN submit when clicking worker-filled plain text", async () => {
+    const env = await bootstrapContentScript(
+      '<div class="card-vin__action"><button class="card-vin__button" type="button">2C8GF68**********</button></div>',
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "BYN",
+        vinFeatureEnabled: true,
+      },
+      {
+        url: "https://cars.av.by/chrysler/pacifica/131905951",
+        getVinForPageResponse: {
+          success: true,
+          data: {
+            exists: true,
+            pageId: "131905951",
+            vin: "2C8GF68ABC1234567",
+          },
+        },
+      },
+    );
+
+    try {
+      await flushTicks();
+
+      const vinText = env.dom.window.document.querySelector(
+        ".card-vin__action > span",
+      );
+      expect(vinText).not.toBeNull();
+      let documentClickCount = 0;
+      env.dom.window.document.addEventListener("click", () => {
+        documentClickCount += 1;
+      });
+
+      const runtimeMessageCount = env.browserMock.runtimeMessages.length;
+      const clickEvent = new env.dom.window.MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+      });
+
+      expect(vinText.dispatchEvent(clickEvent)).toBe(true);
+      await flushTicks();
+
+      expect(clickEvent.defaultPrevented).toBe(false);
+      expect(documentClickCount).toBe(1);
+      expect(env.browserMock.runtimeMessages).toHaveLength(runtimeMessageCount);
     } finally {
       env.cleanup();
     }

@@ -104,7 +104,9 @@ globalThis.browser ??= globalThis.chrome;
 
   function applyVinFromWorker(element, vin) {
     if (!element || !vin) return;
-    element.textContent = vin;
+    const vinText = document.createElement("span");
+    vinText.textContent = vin;
+    element.replaceWith(vinText);
   }
 
   function applyWorkerVinForPage(pageId) {
