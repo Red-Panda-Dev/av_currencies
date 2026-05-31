@@ -25,9 +25,11 @@ const els = {
   updatedAt: document.getElementById("updated-at"),
   refreshBtn: document.getElementById("refresh-btn"),
   displayCurrency: document.getElementById("display-currency"),
+  vinFeatureEnabled: document.getElementById("vin-feature-enabled"),
 };
 
 const DEFAULT_DISPLAY_CURRENCY = "BYN";
+const VIN_FEATURE_STORAGE_KEY = "vinFeatureEnabled";
 
 function renderRates(ratesData) {
   if (!ratesData || !ratesData.rates) {
@@ -141,6 +143,17 @@ async function persistDisplayCurrency(value) {
   await browser.storage.local.set({ selectedCurrency: value });
 }
 
+async function loadVinFeatureEnabled() {
+  const stored = await browser.storage.local.get(VIN_FEATURE_STORAGE_KEY);
+  return stored[VIN_FEATURE_STORAGE_KEY] === true;
+}
+
+async function persistVinFeatureEnabled(enabled) {
+  await browser.storage.local.set({
+    [VIN_FEATURE_STORAGE_KEY]: enabled === true,
+  });
+}
+
 els.converterAmount.addEventListener("input", () => {
   browser.storage.local.get("ratesData").then(({ ratesData }) => {
     renderConverter(ratesData);
@@ -157,10 +170,15 @@ els.refreshBtn.addEventListener("click", refreshRates);
 els.displayCurrency.addEventListener("change", (event) => {
   persistDisplayCurrency(event.target.value);
 });
+els.vinFeatureEnabled.addEventListener("change", (event) => {
+  persistVinFeatureEnabled(event.target.checked);
+});
 
 document.addEventListener("DOMContentLoaded", async () => {
   const selectedCurrency = await loadDisplayCurrency();
+  const vinFeatureEnabled = await loadVinFeatureEnabled();
   els.displayCurrency.value = selectedCurrency;
+  els.vinFeatureEnabled.checked = vinFeatureEnabled;
 
   if (selectedCurrency === DEFAULT_DISPLAY_CURRENCY) {
     await persistDisplayCurrency(DEFAULT_DISPLAY_CURRENCY);

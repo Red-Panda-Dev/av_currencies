@@ -1,4 +1,4 @@
-.PHONY: test lint build build-chrome package-firefox package-chrome clean run run-chrome run-android run-android-nightly android-log android-enable-debug-emulator format format-check
+.PHONY: test lint build build-chrome package-firefox package-chrome clean run run-chrome run-android run-android-nightly android-log android-enable-debug-emulator format format-check test-worker deploy-worker
 
 EXT_DIR := .
 BUILD_DIR := build
@@ -12,6 +12,12 @@ CHROME_PROFILE_DIR ?= /tmp/$(EXT_NAME)-chrome-profile
 
 test:
 	npm run test
+
+test-worker:
+	cd worker && npm run test
+
+deploy-worker:
+	cd worker && ./deploy.sh
 
 format:
 	npm run format

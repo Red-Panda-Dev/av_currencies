@@ -80,6 +80,9 @@ import {
   ALARM_NAME,
   ALARM_INTERVAL_MINUTES,
   FETCH_TIMEOUT_MS,
+  VIN_WORKER_API_BASE,
+  fetchVinForPage,
+  submitVinForPage,
 } from "../src/background.js";
 
 // Helper to create a mock Response
@@ -127,6 +130,10 @@ describe("Constants", () => {
 
   it("exports FETCH_TIMEOUT_MS", () => {
     expect(FETCH_TIMEOUT_MS).toBe(10000);
+  });
+
+  it("exports VIN_WORKER_API_BASE", () => {
+    expect(VIN_WORKER_API_BASE).toBe("https://avby.currencies-bel.top");
   });
 });
 
@@ -425,6 +432,127 @@ describe("Message handler", () => {
       expect(response.ratesData).toEqual(storageState.ratesData);
       expect(response.lastError).toBeNull();
     }
+  });
+
+  it("getVinForPage calls worker get endpoint", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        exists: true,
+        pageId: "131905951",
+        vin: "WBA7C81040G494032",
+      }),
+    );
+
+    for (const listener of listeners.onMessage) {
+      const sendResponse = vi.fn();
+      await listener(
+        { action: "getVinForPage", pageId: "131905951" },
+        {},
+        sendResponse,
+      );
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${VIN_WORKER_API_BASE}/api/vin/131905951`,
+        expect.any(Object),
+      );
+      const response = sendResponse.mock.calls[0][0];
+      expect(response.success).toBe(true);
+      expect(response.data.vin).toBe("WBA7C81040G494032");
+    }
+  });
+
+  it("submitVinForPage posts VIN to worker endpoint", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        exists: true,
+        pageId: "131905951",
+        vin: "WBA7C81040G494032",
+      }),
+    );
+
+    for (const listener of listeners.onMessage) {
+      const sendResponse = vi.fn();
+      await listener(
+        {
+          action: "submitVinForPage",
+          pageId: "131905951",
+          pageUrl: "https://cars.av.by/bmw/7-seriya/131905951",
+          vin: "WBA7C81040G494032",
+        },
+        {},
+        sendResponse,
+      );
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(`${VIN_WORKER_API_BASE}/api/vin`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          pageId: "131905951",
+          pageUrl: "https://cars.av.by/bmw/7-seriya/131905951",
+          vin: "WBA7C81040G494032",
+        }),
+        signal: expect.any(AbortSignal),
+      });
+      const response = sendResponse.mock.calls[0][0];
+      expect(response.success).toBe(true);
+    }
+  });
+});
+
+describe("VIN helpers", () => {
+  it("fetchVinForPage returns invalid page id error", async () => {
+    const result = await fetchVinForPage("bad");
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe("INVALID_PAGE_ID");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fetchVinForPage maps worker error payload", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ error: { code: "RATE_LIMIT" } }, 429, false),
+    );
+    const result = await fetchVinForPage("131905951");
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe("RATE_LIMIT");
+  });
+
+  it("fetchVinForPage maps network error", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("down"));
+    const result = await fetchVinForPage("131905951");
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe("NETWORK_ERROR");
+  });
+
+  it("submitVinForPage returns invalid payload error", async () => {
+    const result = await submitVinForPage({
+      pageId: "1",
+      pageUrl: 1,
+      vin: "bad",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe("INVALID_PAYLOAD");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("submitVinForPage maps worker error payload", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ error: { code: "VIN_CONFLICT" } }, 409, false),
+    );
+    const result = await submitVinForPage({
+      pageId: "131905951",
+      pageUrl: "https://cars.av.by/bmw/7-seriya/131905951",
+      vin: "WBA7C81040G494032",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe("VIN_CONFLICT");
   });
 });
 

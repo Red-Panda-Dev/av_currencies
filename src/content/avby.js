@@ -6,7 +6,7 @@ globalThis.browser ??= globalThis.chrome;
   const DEFAULT_DISPLAY_CURRENCY = "BYN";
   const DISPLAY_CURRENCIES = new Set(["BYN", "USD", "EUR", "RUB"]);
   const CURRENCY_SYMBOLS = { BYN: "р.", USD: "$", EUR: "€", RUB: "RUB" };
-  const STORAGE_KEYS = ["ratesData", "selectedCurrency"];
+  const STORAGE_KEYS = ["ratesData", "selectedCurrency", "vinFeatureEnabled"];
   const NODE_TYPE_ELEMENT = 1;
   const NODE_TYPE_TEXT = 3;
   const NODE_TYPE_DOCUMENT_FRAGMENT = 11;
@@ -40,6 +40,7 @@ globalThis.browser ??= globalThis.chrome;
   const GRAPH_LOG_SUM_SELECTORS = [".graph-log__sum"];
   const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
   const SALON_SUFFIX_SELECTOR = "span:last-child";
+  const VIN_BUTTON_SELECTOR = ".card-vin__number, .card-vin__button";
 
   const MONTHLY_REGEX =
     /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN(\s*в\s*месяц)/i;
@@ -71,8 +72,115 @@ globalThis.browser ??= globalThis.chrome;
 
   let ratesData = null;
   let selectedCurrency = DEFAULT_DISPLAY_CURRENCY;
+  let vinFeatureEnabled = false;
   let applyScheduled = false;
   let fullMonthlyScanRequested = true;
+  const vinReadRequestedPages = new Set();
+  const vinSubmitRequestedPages = new Set();
+
+  function normalizeVinFeatureEnabled(value) {
+    return value === true;
+  }
+
+  function getPageIdFromLocation() {
+    if (!window?.location?.pathname) return null;
+    const match = window.location.pathname.match(/\/(\d{6,12})(?:\/)?$/);
+    return match ? match[1] : null;
+  }
+
+  function normalizeVin(value) {
+    if (typeof value !== "string") return null;
+    const vin = value.trim().toUpperCase();
+    return /^[A-HJ-NPR-Z0-9]{17}$/.test(vin) ? vin : null;
+  }
+
+  function getMaskedVinPrefix(element) {
+    if (!element) return null;
+    const text = (element.textContent || "").trim().toUpperCase();
+    const match = text.match(/^([A-HJ-NPR-Z0-9]{5,})/);
+    return match ? match[1] : null;
+  }
+
+  function applyVinFromWorker(element, vin) {
+    if (!element || !vin) return;
+    element.textContent = vin;
+  }
+
+  function findRevealedVinOnPage() {
+    const button = document.querySelector(VIN_BUTTON_SELECTOR);
+    if (!button) return null;
+    return normalizeVin(button.textContent || "");
+  }
+
+  function requestVinFromWorkerForPage() {
+    if (!vinFeatureEnabled || !browser.runtime?.sendMessage) return;
+    const pageId = getPageIdFromLocation();
+    if (!pageId || vinReadRequestedPages.has(pageId)) return;
+    vinReadRequestedPages.add(pageId);
+
+    browser.runtime
+      .sendMessage({ action: "getVinForPage", pageId })
+      .then((response) => {
+        if (
+          !response?.success ||
+          !response?.data?.exists ||
+          !response?.data?.vin
+        ) {
+          return;
+        }
+
+        const button = document.querySelector(VIN_BUTTON_SELECTOR);
+        if (!button) return;
+        const prefix = getMaskedVinPrefix(button);
+        const vin = normalizeVin(response.data.vin);
+        if (!vin || !prefix || !vin.startsWith(prefix)) return;
+        applyVinFromWorker(button, vin);
+      })
+      .catch(() => {});
+  }
+
+  function submitRevealedVinIfNeeded() {
+    if (!vinFeatureEnabled || !browser.runtime?.sendMessage) return;
+    const pageId = getPageIdFromLocation();
+    if (!pageId || vinSubmitRequestedPages.has(pageId)) return;
+    const vin = findRevealedVinOnPage();
+    if (!vin) return;
+    submitVinToWorker(pageId, vin);
+  }
+
+  function submitVinToWorker(pageId, vin) {
+    const normalizedVin = normalizeVin(vin);
+    if (!pageId || !normalizedVin || vinSubmitRequestedPages.has(pageId))
+      return;
+
+    vinSubmitRequestedPages.add(pageId);
+    browser.runtime
+      .sendMessage({
+        action: "submitVinForPage",
+        pageId,
+        pageUrl: window.location.href,
+        vin: normalizedVin,
+      })
+      .catch(() => {
+        vinSubmitRequestedPages.delete(pageId);
+      });
+  }
+
+  function queueVinSubmitAfterUserClick() {
+    if (!vinFeatureEnabled) return;
+
+    setTimeout(() => submitRevealedVinIfNeeded(), 0);
+    setTimeout(() => submitRevealedVinIfNeeded(), 300);
+    setTimeout(() => submitRevealedVinIfNeeded(), 1000);
+  }
+
+  function setupVinClickListener() {
+    document.addEventListener("click", (event) => {
+      const button = event.target?.closest?.(VIN_BUTTON_SELECTOR);
+      if (!button) return;
+      queueVinSubmitAfterUserClick();
+    });
+  }
 
   function normalizeCurrency(value) {
     if (DISPLAY_CURRENCIES.has(value)) return value;
@@ -726,6 +834,8 @@ globalThis.browser ??= globalThis.chrome;
     applyGraphLogSumPrices(graphLogSumElements);
 
     applySalonPriceSuffixes();
+    requestVinFromWorkerForPage();
+    submitRevealedVinIfNeeded();
 
     pruneDisconnectedMonthlyNodes();
 
@@ -889,7 +999,17 @@ globalThis.browser ??= globalThis.chrome;
         selectedCurrency = normalizeCurrency(changes.selectedCurrency.newValue);
       }
 
-      if (changes.ratesData || changes.selectedCurrency) {
+      if (changes.vinFeatureEnabled) {
+        vinFeatureEnabled = normalizeVinFeatureEnabled(
+          changes.vinFeatureEnabled.newValue,
+        );
+      }
+
+      if (
+        changes.ratesData ||
+        changes.selectedCurrency ||
+        changes.vinFeatureEnabled
+      ) {
         scheduleApply();
       }
     });
@@ -955,10 +1075,12 @@ globalThis.browser ??= globalThis.chrome;
       const stored = await browser.storage.local.get(STORAGE_KEYS);
       ratesData = stored.ratesData || null;
       selectedCurrency = normalizeCurrency(stored.selectedCurrency);
+      vinFeatureEnabled = normalizeVinFeatureEnabled(stored.vinFeatureEnabled);
       requestRatesIfMissing();
       scheduleApply();
       setupObserver();
       setupStorageListener();
+      setupVinClickListener();
       applyOriginalDaysOnSale();
     } catch (_err) {
       // Ignore storage errors in content context.

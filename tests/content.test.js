@@ -115,6 +115,10 @@ function createBrowserMock(initialState = {}, options = {}) {
             };
           }
 
+          if (message?.action === "getVinForPage") {
+            return options.getVinForPageResponse || null;
+          }
+
           return null;
         },
       },
@@ -130,7 +134,7 @@ async function flushTicks(count = 4) {
 
 async function bootstrapContentScript(html, initialState, options = {}) {
   const dom = new JSDOM(html, {
-    url: "https://av.by/",
+    url: options.url || "https://av.by/",
     runScripts: "outside-only",
   });
 
@@ -173,6 +177,148 @@ async function bootstrapContentScript(html, initialState, options = {}) {
 }
 
 describe("av.by content script", () => {
+  it("does not request VIN when vin feature is disabled", async () => {
+    const env = await bootstrapContentScript(
+      '<button class="card-vin__button">WBA7C8******494032</button>',
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "BYN",
+        vinFeatureEnabled: false,
+      },
+      { url: "https://cars.av.by/bmw/7-seriya/131905951" },
+    );
+
+    try {
+      const vinMessages = env.browserMock.runtimeMessages.filter(
+        (message) => message.action === "getVinForPage",
+      );
+      expect(vinMessages).toHaveLength(0);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("does not fetch or submit VIN after click when vin feature is disabled", async () => {
+    const env = await bootstrapContentScript(
+      '<button class="card-vin__number">WBA7C8******494032</button>',
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "BYN",
+        vinFeatureEnabled: false,
+      },
+      {
+        url: "https://cars.av.by/bmw/7-seriya/131905951",
+      },
+    );
+
+    try {
+      env.dom.window.document.querySelector(".card-vin__number").click();
+      await flushTicks();
+      const vinMessages = env.browserMock.runtimeMessages.filter((message) =>
+        ["getVinForPage", "submitVinForPage"].includes(message.action),
+      );
+      expect(vinMessages).toHaveLength(0);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("replaces hidden VIN with worker VIN when vin feature is enabled", async () => {
+    const env = await bootstrapContentScript(
+      '<button class="card-vin__number">WBA7C8******494032</button>',
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "BYN",
+        vinFeatureEnabled: true,
+      },
+      {
+        url: "https://cars.av.by/bmw/7-seriya/131905951",
+        getVinForPageResponse: {
+          success: true,
+          data: {
+            exists: true,
+            pageId: "131905951",
+            vin: "WBA7C81040G494032",
+          },
+        },
+      },
+    );
+
+    try {
+      await flushTicks();
+      const button = env.dom.window.document.querySelector(".card-vin__number");
+      expect(button.textContent).toBe("WBA7C81040G494032");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("requests and submits VIN when vin feature is enabled", async () => {
+    const env = await bootstrapContentScript(
+      '<button class="card-vin__number">WBA7C81040G494032</button>',
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "BYN",
+        vinFeatureEnabled: true,
+      },
+      { url: "https://cars.av.by/bmw/7-seriya/131905951" },
+    );
+
+    try {
+      await flushTicks();
+      const getMessages = env.browserMock.runtimeMessages.filter(
+        (message) => message.action === "getVinForPage",
+      );
+      const submitMessages = env.browserMock.runtimeMessages.filter(
+        (message) => message.action === "submitVinForPage",
+      );
+      expect(getMessages.length).toBeGreaterThan(0);
+      expect(submitMessages.length).toBeGreaterThan(0);
+      expect(submitMessages[0].vin).toBe("WBA7C81040G494032");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("submits VIN revealed into the page after click without fetching AV.by API", async () => {
+    const env = await bootstrapContentScript(
+      '<button class="card-vin__number">WBA7C8******494032</button>',
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "BYN",
+        vinFeatureEnabled: true,
+      },
+      {
+        url: "https://cars.av.by/bmw/7-seriya/131905951",
+        getVinForPageResponse: {
+          success: true,
+          data: { exists: false, pageId: "131905951" },
+        },
+      },
+    );
+
+    try {
+      const button = env.dom.window.document.querySelector(".card-vin__number");
+      button.click();
+      button.textContent = "WBA7C81040G494032";
+      await flushTicks();
+
+      expect(
+        env.browserMock.runtimeMessages.some(
+          (message) => message.action === "fetchVinFromAvByPage",
+        ),
+      ).toBe(false);
+      expect(env.browserMock.runtimeMessages).toContainEqual({
+        action: "submitVinForPage",
+        pageId: "131905951",
+        pageUrl: "https://cars.av.by/bmw/7-seriya/131905951",
+        vin: "WBA7C81040G494032",
+      });
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("converts listing and salon prices in index fixture", async () => {
     const env = await bootstrapContentScript(indexFixture, {
       ratesData: sampleRates,

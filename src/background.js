@@ -6,8 +6,96 @@ export const API_URL = "https://api.nbrb.by/exrates/rates?periodicity=0";
 export const ALARM_NAME = "nbrb-rates-refresh";
 export const ALARM_INTERVAL_MINUTES = 240;
 export const FETCH_TIMEOUT_MS = 10000;
+export const VIN_WORKER_API_BASE = "https://avby.currencies-bel.top";
 
 let fetchInProgress = null;
+
+function normalizePageId(value) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const pageId = String(value).trim();
+  return /^\d{6,12}$/.test(pageId) ? pageId : null;
+}
+
+function normalizeVin(value) {
+  if (typeof value !== "string") return null;
+  const vin = value.trim().toUpperCase();
+  return /^[A-HJ-NPR-Z0-9]{17}$/.test(vin) ? vin : null;
+}
+
+async function fetchWithTimeout(url, init = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function fetchVinForPage(pageId) {
+  const normalizedPageId = normalizePageId(pageId);
+  if (!normalizedPageId) {
+    return {
+      success: false,
+      error: { code: "INVALID_PAGE_ID", message: "Некорректный pageId" },
+    };
+  }
+
+  try {
+    const response = await fetchWithTimeout(
+      `${VIN_WORKER_API_BASE}/api/vin/${normalizedPageId}`,
+    );
+    const payload = await response.json();
+    if (!response.ok) {
+      return { success: false, error: payload.error || { code: "HTTP_ERROR" } };
+    }
+    return { success: true, data: payload };
+  } catch (error) {
+    return {
+      success: false,
+      error: {
+        code: error.name === "AbortError" ? "TIMEOUT" : "NETWORK_ERROR",
+        message: "Не удалось получить VIN",
+      },
+    };
+  }
+}
+
+export async function submitVinForPage({ pageId, pageUrl, vin }) {
+  const normalizedPageId = normalizePageId(pageId);
+  const normalizedVin = normalizeVin(vin);
+  if (!normalizedPageId || !normalizedVin || typeof pageUrl !== "string") {
+    return {
+      success: false,
+      error: { code: "INVALID_PAYLOAD", message: "Некорректные данные VIN" },
+    };
+  }
+
+  try {
+    const response = await fetchWithTimeout(`${VIN_WORKER_API_BASE}/api/vin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        pageId: normalizedPageId,
+        pageUrl,
+        vin: normalizedVin,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      return { success: false, error: payload.error || { code: "HTTP_ERROR" } };
+    }
+    return { success: true, data: payload };
+  } catch (error) {
+    return {
+      success: false,
+      error: {
+        code: error.name === "AbortError" ? "TIMEOUT" : "NETWORK_ERROR",
+        message: "Не удалось отправить VIN",
+      },
+    };
+  }
+}
 
 export async function fetchRates({ force = false } = {}) {
   if (fetchInProgress && !force) return fetchInProgress;
@@ -116,6 +204,16 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.action === "getRates") {
     browser.storage.local.get(["ratesData", "lastError"]).then(sendResponse);
+    return true;
+  }
+
+  if (message.action === "getVinForPage") {
+    fetchVinForPage(message.pageId).then(sendResponse);
+    return true;
+  }
+
+  if (message.action === "submitVinForPage") {
+    submitVinForPage(message).then(sendResponse);
     return true;
   }
 });
