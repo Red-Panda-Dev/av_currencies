@@ -2,6 +2,14 @@ name = "av-currencies-vin"
 main = "src/index.ts"
 compatibility_date = "2026-05-31"
 
+[[routes]]
+pattern = "avby.currencies-bel.top/api/*"
+zone_name = "currencies-bel.top"
+
+[[routes]]
+pattern = "avby.currencies-bel.top"
+custom_domain = true
+
 [vars]
 ALLOWED_ORIGINS = "chrome-extension://*,moz-extension://*"
 
