@@ -408,6 +408,63 @@ describe("av.by content script", () => {
     }
   });
 
+  it("converts card__commercial-price b and preserves monthly suffix", async () => {
+    const originalBText = `2\u00A0064 BYN`;
+    const html = `<html><body>
+      <div class="card__commercial">
+        <div class="card__commercial-button"></div>
+        <div class="card__commercial-title">Лизинг</div>
+        <div class="card__commercial-wrap">
+          <span class="card__commercial-price"><b>${originalBText}</b> в\u00A0месяц</span>
+        </div>
+        <div class="card__commercial-text">Оставить заявку на лизинг</div>
+      </div>
+    </body></html>`;
+
+    const env = await bootstrapContentScript(html, {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const b = env.dom.window.document.querySelector(
+        ".card__commercial-price b",
+      );
+      expect(b).not.toBeNull();
+
+      const bynAmount = 2064;
+      const { rate, scale } = sampleRates.rates.USD;
+      const converted = (bynAmount * scale) / rate;
+      const expectedFormatted = `${new Intl.NumberFormat("ru-RU", {
+        maximumFractionDigits: 0,
+      }).format(Math.round(converted))} $`;
+
+      expect(b.textContent).toBe(expectedFormatted);
+      expect(b.textContent).not.toContain("BYN");
+
+      const parent = env.dom.window.document.querySelector(
+        ".card__commercial-price",
+      );
+      expect(parent.textContent).toContain("в");
+      expect(parent.textContent).toContain("месяц");
+      expect(parent.querySelector("b")).toBe(b);
+
+      expect(b.dataset.avCurrenciesOriginalText).toBe(originalBText);
+      expect(Number.parseFloat(b.dataset.avCurrenciesBynAmount)).toBeCloseTo(
+        bynAmount,
+      );
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(b.textContent).toBe(originalBText);
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("restores original BYN text when currency switches back to BYN", async () => {
     const env = await bootstrapContentScript(indexFixture, {
       ratesData: sampleRates,
