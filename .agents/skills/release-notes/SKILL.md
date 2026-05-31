@@ -1,13 +1,13 @@
 ---
 name: generate-release-notes
-description: Generate bilingual user-facing release notes and changelog from Git history
+description: Generate bilingual user-facing release notes and changelog from Git commit range
 ---
 
 # /generate-release-notes — Bilingual release notes for browser extension
 
 You are a product release editor for a browser extension.
 
-Your task is to analyze Git changes for a selected period or version range and generate **simple, human-readable release notes and changelog** for ordinary users.
+Your task is to analyze Git changes for one release range and generate **simple, human-readable release notes and changelog** for ordinary users.
 
 The final release notes must be written in **two languages**:
 
@@ -46,16 +46,156 @@ Do not claim a specific change happened unless Git history confirms it.
 ## Invocation
 
 ```bash
-/generate-release-notes [--from <ref|date>] [--to <ref|date>] [--version <version>] [--output <path>]
+/generate-release-notes [--from <previous-release-ref>] [--to <target-ref>] [--version <version>] [--output <path>]
 ```
 
 ### Examples
 
 ```bash
-/generate-release-notes --from v1.0.0 --to v1.1.0
-/generate-release-notes --from 2026-04-01 --to 2026-05-01
+/generate-release-notes
 /generate-release-notes --version 1.2.0
+/generate-release-notes --from v1.1.0 --to HEAD
+/generate-release-notes --from 2f4a1d9 --to 8c91a22
 ```
+
+---
+
+## Release range semantics
+
+This command is release-based, not date-based.
+
+The generated frontmatter fields named `date_from` and `date_to` are historical field names. They must contain **commit refs/hashes**, not calendar dates.
+
+Meaning:
+
+- `date_from` = hash of the **first commit included in this release**
+- `date_to` = hash of the **last commit included in this release**
+
+The release range should cover:
+
+```text
+first commit after the previous release tag → latest release commit
+```
+
+In Git terms, the evidence range is usually:
+
+```text
+<previous_release_ref>..<target_ref>
+```
+
+where:
+
+- `<previous_release_ref>` is the previous release tag or previous release commit
+- `<target_ref>` is `HEAD`, the requested version tag, or explicit `--to`
+
+The first included commit is the oldest commit in that range.
+
+---
+
+## How to determine range
+
+Use Git history as the canonical source of truth.
+
+### Preferred method: Git tags
+
+Use release tags first.
+
+If `--from` is provided:
+
+- treat it as the previous release ref
+- do not include the `--from` commit/tag itself
+- analyze `<from>..<to>`
+
+If `--to` is missing:
+
+- use `HEAD`
+
+If `--version` is provided and a matching tag exists:
+
+- use that version tag as `target_ref`
+- find the previous release tag before it
+- analyze `<previous_tag>..<version_tag>`
+
+If no arguments are provided:
+
+- use the latest release tag reachable from `HEAD` as `previous_release_ref`
+- use `HEAD` as `target_ref`
+- analyze `<previous_release_ref>..HEAD`
+
+Useful commands:
+
+```bash
+git tag --sort=-creatordate
+git describe --tags --abbrev=0 HEAD
+git rev-parse <target-ref>
+git log --reverse --format=%H <previous-release-ref>..<target-ref>
+```
+
+Compute frontmatter refs:
+
+```bash
+FIRST_COMMIT=$(git log --reverse --format=%H <previous-release-ref>..<target-ref> | head -n 1)
+LAST_COMMIT=$(git rev-parse <target-ref>)
+```
+
+Then:
+
+```yaml
+date_from: <FIRST_COMMIT>
+date_to: <LAST_COMMIT>
+```
+
+### Fallback method: previous release note
+
+Use previous release notes only as a fallback or cross-check.
+
+Previous release notes are useful when:
+
+- release tags are missing
+- local tags are incomplete
+- the repo intentionally tracks release ranges in release note files
+
+If tags are unavailable, inspect existing release notes under:
+
+```text
+release-notes/
+```
+
+Look for the latest previous note with frontmatter:
+
+```yaml
+date_to: <previous-release-last-commit>
+```
+
+Then use:
+
+```text
+<previous date_to>..<target_ref>
+```
+
+and compute:
+
+```bash
+FIRST_COMMIT=$(git log --reverse --format=%H <previous-date_to>..<target-ref> | head -n 1)
+LAST_COMMIT=$(git rev-parse <target-ref>)
+```
+
+Do not prefer release notes over Git tags when valid tags exist.
+
+Use previous release notes as:
+
+1. fallback when tags are missing
+2. cross-check to detect mismatch between recorded previous release and Git tag history
+
+If both tags and previous release note exist but disagree, use Git tags and mention the mismatch only in internal reasoning, not in the public release notes.
+
+### No usable range
+
+If no previous release tag, no explicit `--from`, and no previous release note with `date_to` exists:
+
+- stop
+- ask the user for `--from <previous-release-ref>`
+- do not invent a starting commit
 
 ---
 
@@ -64,19 +204,22 @@ Do not claim a specific change happened unless Git history confirms it.
 Default output path:
 
 ```text
-release-notes/<version-or-date-range>.md
+release-notes/<version-or-range>.md
 ```
 
 If `--output` is provided, write to that exact path.
 
-If no version is provided, infer a safe filename from the compared refs or dates.
-
-Examples:
+If `--version` is provided, prefer:
 
 ```text
-release-notes/v1.1.0.md
-release-notes/2026-04-01-2026-05-01.md
-release-notes/main-since-v1.0.0.md
+release-notes/v<version>.md
+```
+
+If no version is provided, infer a safe filename from the target ref or range, for example:
+
+```text
+release-notes/head-since-v1.1.0.md
+release-notes/2f4a1d9-8c91a22.md
 ```
 
 ---
@@ -116,7 +259,22 @@ The Russian version must not add facts that are absent from the English version.
 
 The two versions do not need to be literal word-for-word translations, but they must be semantically equivalent.
 
-### 2. User-facing language
+### 2. Commit refs in frontmatter
+
+The final frontmatter must use commit hashes/refs in `date_from` and `date_to`.
+
+Do not put calendar dates in these fields.
+
+Required meaning:
+
+- `date_from`: first included commit hash
+- `date_to`: last included commit hash
+
+Use full hashes when practical.
+
+Short hashes are acceptable only if the repository convention clearly uses short refs.
+
+### 3. User-facing language
 
 Write for ordinary extension users.
 
@@ -145,7 +303,7 @@ Good in English:
 - `The same extension version works better across Firefox and Chromium-based browsers.`
 - `Prices should keep updating even when AV.by loads listings dynamically.`
 
-### 3. No hallucinations
+### 4. No hallucinations
 
 Only describe changes supported by Git evidence.
 
@@ -184,7 +342,7 @@ English examples:
 - `improves behavior`
 - `prepares the foundation`
 
-### 4. No raw technical changelog
+### 5. No raw technical changelog
 
 Do not dump commits.
 
@@ -194,7 +352,7 @@ Merge related commits into one readable item.
 
 Describe outcomes, not implementation steps.
 
-### 5. Filter noise
+### 6. Filter noise
 
 Ignore low-signal commits unless they affect users or release quality:
 
@@ -207,13 +365,13 @@ Ignore low-signal commits unless they affect users or release quality:
 - test-only changes without behavioral impact
 - build-script changes that do not affect install/use/release
 
-### 6. Keep technical details secondary
+### 7. Keep technical details secondary
 
 A small technical section is allowed, but it must be short and understandable.
 
 The main release notes must be non-technical.
 
-### 7. Empty sections
+### 8. Empty sections
 
 Do not keep empty sections.
 
@@ -225,43 +383,35 @@ If a category has no meaningful changes, omit it from both language versions.
 
 Execute silently.
 
-Use the best available comparison depending on invocation.
+Use the resolved commit range.
 
-### If `--from` and `--to` are refs
+### Required commands
 
-Use:
+After resolving `previous_release_ref` and `target_ref`, collect evidence with:
 
 ```bash
-git log --no-merges --date=short --pretty=format:"%H%x09%ad%x09%s%x09%b" <from>..<to>
-git diff --stat <from>..<to>
+git log --no-merges --date=short --pretty=format:"%H%x09%ad%x09%s%x09%b" <previous_release_ref>..<target_ref>
+git diff --stat <previous_release_ref>..<target_ref>
 ```
 
 For unclear changes:
 
 ```bash
-git diff <from>..<to> -- <path>
+git diff <previous_release_ref>..<target_ref> -- <path>
 ```
 
-### If `--from` and `--to` are dates
-
-Use inclusive date boundaries:
+To compute frontmatter refs:
 
 ```bash
-git log --since="<from> 00:00:00" --until="<to> 23:59:59" --no-merges --date=short --pretty=format:"%H%x09%ad%x09%s%x09%b"
-git log --since="<from> 00:00:00" --until="<to> 23:59:59" --no-merges --stat
+git log --reverse --format=%H <previous_release_ref>..<target_ref> | head -n 1
+git rev-parse <target_ref>
 ```
 
-### If `--version` is provided
+If the range is empty:
 
-Inspect files that may contain version data, such as:
-
-- `manifest.json`
-- `package.json`
-- release files
-- tags
-- changelog/release-notes directory, if present
-
-Do not assume release version unless observable.
+- stop
+- report that no commits were found between the previous release ref and target ref
+- do not generate fake release notes
 
 ---
 
@@ -458,14 +608,12 @@ Omit empty sections.
 
 ```md
 ---
-
 version: <version or unknown>
-date_from: <YYYY-MM-DD or ref>
-date_to: <YYYY-MM-DD or ref>
+date_from: <first included commit hash/ref>
+date_to: <last included commit hash/ref>
 tags: release-notes
 release_title_ru: "<2–5 слов>"
 release_title_en: "<2–5 words>"
-
 ---
 
 # <release_title_ru>
@@ -597,19 +745,20 @@ Use:
 
 ```yaml
 ---
-
 version: <version or unknown>
-date_from: <YYYY-MM-DD or ref>
-date_to: <YYYY-MM-DD or ref>
+date_from: <first included commit hash/ref>
+date_to: <last included commit hash/ref>
 tags: release-notes
 release_title_ru: "<2–5 слов>"
 release_title_en: "<2–5 words>"
-
 ---
 ```
 
 Rules:
 
+- `date_from` and `date_to` are commit refs/hashes, not dates
+- `date_from` must be the first included commit in the release range
+- `date_to` must be the last included commit in the release range
 - `release_title_ru` must be 2–5 Russian words
 - `release_title_en` must be 2–5 English words
 - Russian main heading must equal `release_title_ru`
@@ -785,6 +934,10 @@ Before writing the final output, verify:
 14. The final changelog is useful, not just complete.
 15. The final file has no template placeholders.
 16. The output is valid Markdown.
+17. `date_from` is a commit hash/ref, not a calendar date.
+18. `date_to` is a commit hash/ref, not a calendar date.
+19. `date_from` is the first included commit in the release range.
+20. `date_to` is the last included commit in the release range.
 
 ---
 
@@ -806,6 +959,9 @@ After writing, output only:
 
 Path:
 - <target path>
+
+Range:
+- <date_from>..<date_to>
 
 Russian title:
 - <release_title_ru>
