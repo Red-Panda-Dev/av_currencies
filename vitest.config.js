@@ -7,7 +7,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html"],
       reportsDirectory: "./coverage",
-      include: ["src/lib/**/*.js"],
+      include: ["src/lib/**/*.js", "src/background.js"],
       thresholds: {
         lines: 80,
         functions: 80,
