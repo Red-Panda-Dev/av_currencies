@@ -1,10 +1,13 @@
 {
   "manifest_version": 3,
   "name": "AV.by Валюты",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Замена цен на AV.by из BYN в выбранную валюту с курсами НБРБ.",
   "permissions": ["alarms", "storage"],
-  "host_permissions": ["https://api.nbrb.by/*"],
+  "host_permissions": [
+    "https://api.nbrb.by/*",
+    "https://avby.currencies-bel.top/api/*"
+  ],
   "background": {
     "scripts": ["src/background.js"],
     "type": "module"
