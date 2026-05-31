@@ -167,6 +167,35 @@ describe("popup VIN checkbox — persistence", () => {
   });
 });
 
+describe("popup VIN checkbox — layout and link", () => {
+  it("renders VIN checkbox inside a dedicated block under settings", async () => {
+    await bootstrapPopup();
+    const block = document.querySelector(".settings__vin-block");
+    const row = document.querySelector(".settings__vin-row");
+    const checkbox = document.getElementById("vin-feature-enabled");
+
+    expect(block).not.toBeNull();
+    expect(row).not.toBeNull();
+    expect(checkbox).not.toBeNull();
+    expect(block.contains(row)).toBe(true);
+    expect(row.contains(checkbox)).toBe(true);
+  });
+
+  it("includes link to VIN logic description with safe attributes", async () => {
+    await bootstrapPopup();
+    const link = document.querySelector(".settings__vin-link");
+
+    expect(link).not.toBeNull();
+    expect(link.textContent).toBe("Описание логики");
+    expect(link.getAttribute("href")).toBe(
+      "https://github.com/Red-Panda-Dev/av_currencies/blob/main/VIN-LOGIC.md",
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(link.getAttribute("rel")).toContain("noreferrer");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Display currency — sanity check that existing popup behavior is intact
 // ---------------------------------------------------------------------------
