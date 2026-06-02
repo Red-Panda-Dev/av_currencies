@@ -2,7 +2,7 @@
 
 ## Scope
 
-AV.by content script in `src/content/`. It runs on `https://*.av.by/*` at `document_idle` and replaces BYN prices with the selected display currency.
+AV.by content script in `src/content/`. It runs on `https://*.av.by/*` at `document_idle` and replaces BYN prices with the selected display currency, using effective rates that account for custom rate overrides.
 
 ## What lives here
 
@@ -14,12 +14,14 @@ src/content/
 ## Local boundaries and invariants
 
 - `avby.js` is not an ES module. Do not add `import` or `export`; browser API compatibility comes from `globalThis.browser ??= globalThis.chrome;`.
-- The content script does not fetch network resources. It reads `ratesData`, `selectedCurrency`, and `vinFeatureEnabled` from storage and asks background for `ensureRates`, `getVinForPage`, and `submitVinForPage`.
+- The content script does not fetch network resources. It reads `ratesData`, `selectedCurrency`, `vinFeatureEnabled`, and `customRates` from storage and asks background for `ensureRates`, `getVinForPage`, and `submitVinForPage`.
 - DOM writes must use `textContent` or `nodeValue`, not `innerHTML`.
-- The local copies of `parseBynPrice`, `convertFromBYN`, and `formatDisplayPrice` must stay behaviorally aligned with `src/lib/rates.js`.
-- Original BYN text restoration depends on element dataset fields, `WeakMap` state for text nodes, and tracked monthly nodes. Preserve those mechanisms when changing selectors or processing flow.
+- The local copies of `parseBynPrice`, `convertFromBYN`, `formatDisplayPrice`, and `formatDisplayPriceRange` must stay behaviorally aligned with `src/lib/rates.js`.
+- `getRateInfo(currencyCode)` merges custom overrides: if `customRates[currencyCode]` is set, it replaces `rate` from the base `ratesData`; `scale` and `code` remain from NBRB.
+- Original BYN text restoration depends on element dataset fields (`avCurrenciesOriginalText`, `avCurrenciesBynAmount`), `WeakMap` state for text nodes, and tracked monthly nodes. Preserve those mechanisms when changing selectors or processing flow.
 - `MutationObserver` watches `document.body` for child-list and character-data changes. Avoid changes that reprocess converted text indefinitely.
 - `originalDaysOnSale` is read from `__NEXT_DATA__` and appended as `, всего N дней в продаже` to matching card stats.
+- `customRates` changes from the storage listener trigger `scheduleApply()`.
 
 ## Safe change rules
 
@@ -38,6 +40,7 @@ npm test                               # Full extension suite with coverage
 ## Nearby docs
 
 - `ARCHITECTURE.md` — content-script data flow and invariants.
+- `DESIGN.md` — DOM update rules and data display patterns.
 - `tests/content.test.js` — JSDOM harness, browser mock, AV.by fixture usage.
 - `examples/` — saved AV.by pages used by content tests.
 - `src/lib/rates.js` — pure source for duplicated conversion helpers.

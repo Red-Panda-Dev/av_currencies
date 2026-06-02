@@ -23,9 +23,15 @@ tests/
 - `examples/*.html` are saved AV.by pages used as fixtures; update them deliberately when AV.by markup changes.
 - `examples/nbrb_response.json` is raw upstream NBRB shape; processed test rates should match the `parseRates` output shape.
 
+## Custom rates test expectations
+
+- `background.test.js` covers `getEffectiveRates`, `saveCustomRate`, `clearCustomRate`, `clearCustomRates`, `getCustomRates` message handlers, and `refreshRates` clearing `customRates`.
+- `content.test.js` covers `customRates` overriding `ratesData.rates[code].rate` for conversion and storage listener pickup.
+- `popup.test.js` covers edit mode toggle, save/cancel custom rates, `.rate-row--custom` class, and refresh clearing customs.
+
 ## Safe change rules
 
-- Put tests next to the component boundary they exercise: rates in `parse.test.js`, background messaging/fetch/alarms in `background.test.js`, AV.by DOM conversion in `content.test.js`, popup UI/storage behavior in `popup.test.js`.
+- Put tests next to the component boundary they exercise: rates in `parse.test.js`, background messaging/fetch/alarms/customs in `background.test.js`, AV.by DOM conversion in `content.test.js`, popup UI/storage/custom-rate behavior in `popup.test.js`.
 - Do not rely on real extension globals. Stub browser APIs explicitly and keep state mutations observable to assertions.
 - If a source module registers listeners at import time, stub globals before importing it and reset module cache between independent DOM module tests.
 - Keep Russian text assertions intentional; they protect user-visible popup/content messages.
