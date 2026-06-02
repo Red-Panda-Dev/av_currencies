@@ -158,6 +158,20 @@ export async function fetchRates({ force = false } = {}) {
   return fetchInProgress;
 }
 
+export async function getEffectiveRates() {
+  const { ratesData, customRates } = await browser.storage.local.get([
+    "ratesData",
+    "customRates",
+  ]);
+  if (!ratesData?.rates) return null;
+  const overrides = customRates || {};
+  const rates = {};
+  for (const [code, info] of Object.entries(ratesData.rates)) {
+    rates[code] = { ...info, rate: overrides[code] ?? info.rate };
+  }
+  return { ...ratesData, rates };
+}
+
 export async function ensureAlarm() {
   const alarm = await browser.alarms.get(ALARM_NAME);
   if (!alarm) {
@@ -198,7 +212,53 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.action === "refreshRates") {
-    fetchRates({ force: true }).then(sendResponse);
+    fetchRates({ force: true }).then(async (result) => {
+      await browser.storage.local.set({ customRates: {} });
+      sendResponse(result);
+    });
+    return true;
+  }
+
+  if (message.action === "saveCustomRate") {
+    browser.storage.local.get("customRates").then(({ customRates }) => {
+      const updated = {
+        ...(customRates || {}),
+        [message.currency]: message.rate,
+      };
+      browser.storage.local.set({ customRates: updated }).then(() => {
+        sendResponse({ success: true });
+      });
+    });
+    return true;
+  }
+
+  if (message.action === "clearCustomRates") {
+    browser.storage.local
+      .set({ customRates: {} })
+      .then(() => sendResponse({ success: true }));
+    return true;
+  }
+
+  if (message.action === "clearCustomRate") {
+    browser.storage.local.get("customRates").then(({ customRates }) => {
+      const updated = { ...(customRates || {}) };
+      delete updated[message.currency];
+      browser.storage.local.set({ customRates: updated }).then(() => {
+        sendResponse({ success: true });
+      });
+    });
+    return true;
+  }
+
+  if (message.action === "getCustomRates") {
+    browser.storage.local.get("customRates").then(({ customRates }) => {
+      sendResponse({ customRates: customRates || {} });
+    });
+    return true;
+  }
+
+  if (message.action === "getEffectiveRates") {
+    getEffectiveRates().then(sendResponse);
     return true;
   }
 

@@ -4,10 +4,19 @@ import {
   DISPLAY_CURRENCIES,
   SCALE_LABELS,
   convert,
-  formatRate,
-  formatRateLabel,
   formatTime,
 } from "../lib/rates.js";
+
+function formatRateDisplay(value) {
+  return value.toFixed(3);
+}
+
+function formatRateLabelDisplay(rateInfo) {
+  const label = SCALE_LABELS[rateInfo.code];
+  return `${formatRateDisplay(rateInfo.rate)} BYN за ${label}`;
+}
+
+let customRates = {};
 
 const els = {
   ratesSection: document.getElementById("rates-section"),
@@ -31,6 +40,18 @@ const els = {
 const DEFAULT_DISPLAY_CURRENCY = "BYN";
 const VIN_FEATURE_STORAGE_KEY = "vinFeatureEnabled";
 
+function getEffectiveRatesData(ratesData) {
+  if (!ratesData || !ratesData.rates) return ratesData;
+  const rates = {};
+  for (const [code, info] of Object.entries(ratesData.rates)) {
+    rates[code] = {
+      ...info,
+      rate: customRates[code] != null ? customRates[code] : info.rate,
+    };
+  }
+  return { ...ratesData, rates };
+}
+
 function renderRates(ratesData) {
   if (!ratesData || !ratesData.rates) {
     els.ratesSection.hidden = true;
@@ -38,11 +59,22 @@ function renderRates(ratesData) {
     return;
   }
 
-  const { rates } = ratesData;
+  const effective = getEffectiveRatesData(ratesData);
+  const { rates } = effective;
 
-  els.rateUsd.textContent = formatRateLabel(rates.USD);
-  els.rateEur.textContent = formatRateLabel(rates.EUR);
-  els.rateRub.textContent = formatRateLabel(rates.RUB);
+  const rows = els.ratesSection.querySelectorAll(".rate-row");
+  const rateEls = { USD: els.rateUsd, EUR: els.rateEur, RUB: els.rateRub };
+
+  for (const row of rows) {
+    const code = row.querySelector(".rate-row__edit")?.dataset.currency;
+    if (!code || !rateEls[code]) continue;
+    if (customRates[code] != null) {
+      row.classList.add("rate-row--custom");
+    } else {
+      row.classList.remove("rate-row--custom");
+    }
+    rateEls[code].textContent = formatRateLabelDisplay(rates[code]);
+  }
 
   els.ratesSection.hidden = false;
   els.converterSection.hidden = false;
@@ -54,9 +86,10 @@ function renderConverter(ratesData) {
     return;
   }
 
+  const effective = getEffectiveRatesData(ratesData);
   const amount = parseFloat(els.converterAmount.value) || 0;
   const currency = els.converterCurrency.value;
-  const rateInfo = ratesData.rates[currency];
+  const rateInfo = effective.rates[currency];
 
   if (!rateInfo) {
     els.converterResult.textContent = "";
@@ -64,7 +97,7 @@ function renderConverter(ratesData) {
   }
 
   const result = convert(amount, rateInfo);
-  els.converterResult.textContent = `= ${formatRate(result)} BYN`;
+  els.converterResult.textContent = `= ${result.toFixed(2)} BYN`;
 }
 
 function renderStatus(lastError, ratesData) {
@@ -122,10 +155,140 @@ async function refreshRates() {
   els.refreshBtn.disabled = true;
   try {
     await browser.runtime.sendMessage({ action: "refreshRates" });
+    customRates = {};
     const stored = await loadData();
     render(stored);
   } finally {
     els.refreshBtn.disabled = false;
+  }
+}
+
+async function loadCustomRates() {
+  const response = await browser.runtime.sendMessage({
+    action: "getCustomRates",
+  });
+  customRates = response?.customRates || {};
+}
+
+function enterEditMode(row, currency) {
+  if (row.classList.contains("rate-row--editing")) return;
+
+  const valueEl = row.querySelector(".rate-row__value");
+  const editBtn = row.querySelector(".rate-row__edit");
+  const currentRate =
+    customRates[currency] != null
+      ? customRates[currency]
+      : parseFloat(
+          valueEl.textContent.replace(",", ".").replace(/[^\d.]/g, ""),
+        );
+
+  const input = document.createElement("input");
+  input.type = "number";
+  input.step = "0.001";
+  input.min = "0.001";
+  input.className = "rate-row__input";
+  input.value = isNaN(currentRate) ? "" : currentRate;
+  input.setAttribute("aria-label", `Новый курс ${currency}`);
+
+  const acceptBtn = document.createElement("button");
+  acceptBtn.type = "button";
+  acceptBtn.className = "rate-row__accept";
+  acceptBtn.textContent = "✓";
+  acceptBtn.setAttribute("aria-label", `Сохранить курс ${currency}`);
+
+  const dropBtn = document.createElement("button");
+  dropBtn.type = "button";
+  dropBtn.className = "rate-row__drop";
+  dropBtn.textContent = "✕";
+  dropBtn.setAttribute("aria-label", `Отменить изменение курса ${currency}`);
+
+  row.classList.add("rate-row--editing");
+  row.insertBefore(input, editBtn);
+  row.insertBefore(acceptBtn, editBtn);
+  row.insertBefore(dropBtn, editBtn);
+  input.focus();
+  input.select();
+
+  async function save() {
+    const newRate = parseFloat(input.value);
+    if (!isNaN(newRate) && newRate > 0) {
+      await browser.runtime.sendMessage({
+        action: "saveCustomRate",
+        currency,
+        rate: newRate,
+      });
+      customRates[currency] = newRate;
+    }
+    exitEditMode(row, input, acceptBtn, dropBtn);
+    const stored = await loadData();
+    render(stored);
+  }
+
+  let blurSave = true;
+
+  function dismiss() {
+    exitEditMode(row, input, acceptBtn, dropBtn);
+  }
+
+  async function cancel() {
+    blurSave = false;
+    await browser.runtime.sendMessage({
+      action: "clearCustomRate",
+      currency,
+    });
+    delete customRates[currency];
+    exitEditMode(row, input, acceptBtn, dropBtn);
+    const stored = await loadData();
+    render(stored);
+  }
+
+  acceptBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    save();
+  });
+
+  dropBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    cancel();
+  });
+
+  acceptBtn.addEventListener("mousedown", () => {
+    blurSave = false;
+  });
+
+  dropBtn.addEventListener("mousedown", () => {
+    blurSave = false;
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      blurSave = false;
+      save();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      blurSave = false;
+      dismiss();
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    if (blurSave && row.classList.contains("rate-row--editing")) {
+      dismiss();
+    }
+  });
+}
+
+function exitEditMode(row, input, acceptBtn, dropBtn) {
+  row.classList.remove("rate-row--editing");
+  if (input && input.parentNode) {
+    input.remove();
+  }
+  if (acceptBtn && acceptBtn.parentNode) {
+    acceptBtn.remove();
+  }
+  if (dropBtn && dropBtn.parentNode) {
+    dropBtn.remove();
   }
 }
 
@@ -166,6 +329,16 @@ els.converterCurrency.addEventListener("change", () => {
   });
 });
 
+els.ratesSection.addEventListener("click", (e) => {
+  const editBtn = e.target.closest(".rate-row__edit");
+  if (!editBtn) return;
+  const row = editBtn.closest(".rate-row");
+  if (!row) return;
+  const currency = editBtn.dataset.currency;
+  if (!currency) return;
+  enterEditMode(row, currency);
+});
+
 els.refreshBtn.addEventListener("click", refreshRates);
 els.displayCurrency.addEventListener("change", (event) => {
   persistDisplayCurrency(event.target.value);
@@ -183,6 +356,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (selectedCurrency === DEFAULT_DISPLAY_CURRENCY) {
     await persistDisplayCurrency(DEFAULT_DISPLAY_CURRENCY);
   }
+
+  await loadCustomRates();
 
   const stored = await loadData();
   if (!stored.ratesData) {

@@ -6,7 +6,12 @@ globalThis.browser ??= globalThis.chrome;
   const DEFAULT_DISPLAY_CURRENCY = "BYN";
   const DISPLAY_CURRENCIES = new Set(["BYN", "USD", "EUR", "RUB"]);
   const CURRENCY_SYMBOLS = { BYN: "р.", USD: "$", EUR: "€", RUB: "RUB" };
-  const STORAGE_KEYS = ["ratesData", "selectedCurrency", "vinFeatureEnabled"];
+  const STORAGE_KEYS = [
+    "ratesData",
+    "selectedCurrency",
+    "vinFeatureEnabled",
+    "customRates",
+  ];
   const NODE_TYPE_ELEMENT = 1;
   const NODE_TYPE_TEXT = 3;
   const NODE_TYPE_DOCUMENT_FRAGMENT = 11;
@@ -71,6 +76,7 @@ globalThis.browser ??= globalThis.chrome;
   const pendingMonthlyNodes = new Set();
 
   let ratesData = null;
+  let customRates = {};
   let selectedCurrency = DEFAULT_DISPLAY_CURRENCY;
   let vinFeatureEnabled = false;
   let applyScheduled = false;
@@ -233,7 +239,10 @@ globalThis.browser ??= globalThis.chrome;
   }
 
   function getRateInfo(currencyCode) {
-    return ratesData?.rates?.[currencyCode] || null;
+    const base = ratesData?.rates?.[currencyCode];
+    if (!base) return null;
+    const override = customRates[currencyCode];
+    return override != null ? { ...base, rate: override } : base;
   }
 
   function shouldConvertPrices() {
@@ -1016,6 +1025,10 @@ globalThis.browser ??= globalThis.chrome;
         ratesData = changes.ratesData.newValue || null;
       }
 
+      if (changes.customRates) {
+        customRates = changes.customRates.newValue || {};
+      }
+
       if (changes.selectedCurrency) {
         selectedCurrency = normalizeCurrency(changes.selectedCurrency.newValue);
       }
@@ -1029,7 +1042,8 @@ globalThis.browser ??= globalThis.chrome;
       if (
         changes.ratesData ||
         changes.selectedCurrency ||
-        changes.vinFeatureEnabled
+        changes.vinFeatureEnabled ||
+        changes.customRates
       ) {
         scheduleApply();
       }
@@ -1095,6 +1109,7 @@ globalThis.browser ??= globalThis.chrome;
     try {
       const stored = await browser.storage.local.get(STORAGE_KEYS);
       ratesData = stored.ratesData || null;
+      customRates = stored.customRates || {};
       selectedCurrency = normalizeCurrency(stored.selectedCurrency);
       vinFeatureEnabled = normalizeVinFeatureEnabled(stored.vinFeatureEnabled);
       requestRatesIfMissing();
