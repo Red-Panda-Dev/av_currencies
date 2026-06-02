@@ -1408,4 +1408,96 @@ describe("av.by content script", () => {
       env.cleanup();
     }
   });
+
+  it("uses customRates to override rate for conversion", async () => {
+    const customRates = { USD: 2.0 };
+    const env = await bootstrapContentScript(
+      "<html><body><div class='listing-index__price'>72 990 р.</div></body></html>",
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "USD",
+        customRates,
+      },
+    );
+
+    try {
+      await flushTicks();
+      const price = env.dom.window.document.querySelector(
+        ".listing-index__price",
+      );
+      const bynAmount = 72990;
+      const converted = (bynAmount * 1) / 2.0;
+      const expected = `${new Intl.NumberFormat("ru-RU", {
+        maximumFractionDigits: 0,
+      }).format(Math.round(converted))} $`;
+
+      expect(price.textContent).toBe(expected);
+      expect(price.dataset.avCurrenciesOriginalText).toBe("72 990 р.");
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("picks up customRates changes from storage listener", async () => {
+    const env = await bootstrapContentScript(
+      "<html><body><div class='listing-index__price'>72 990 р.</div></body></html>",
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "USD",
+      },
+    );
+
+    try {
+      await flushTicks();
+      const price = env.dom.window.document.querySelector(
+        ".listing-index__price",
+      );
+
+      const normalConverted = price.textContent;
+
+      await env.browserMock.browser.storage.local.set({
+        customRates: { USD: 2.0 },
+      });
+      await flushTicks();
+
+      const customConverted = price.textContent;
+      expect(customConverted).not.toBe(normalConverted);
+
+      const bynAmount = 72990;
+      const converted = (bynAmount * 1) / 2.0;
+      const expected = `${new Intl.NumberFormat("ru-RU", {
+        maximumFractionDigits: 0,
+      }).format(Math.round(converted))} $`;
+      expect(customConverted).toBe(expected);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("falls back to NBRB rate when customRates is empty", async () => {
+    const env = await bootstrapContentScript(
+      "<html><body><div class='listing-index__price'>72 990 р.</div></body></html>",
+      {
+        ratesData: sampleRates,
+        selectedCurrency: "USD",
+        customRates: {},
+      },
+    );
+
+    try {
+      await flushTicks();
+      const price = env.dom.window.document.querySelector(
+        ".listing-index__price",
+      );
+      const bynAmount = 72990;
+      const converted = (bynAmount * 1) / sampleRates.rates.USD.rate;
+      const expected = `${new Intl.NumberFormat("ru-RU", {
+        maximumFractionDigits: 0,
+      }).format(Math.round(converted))} $`;
+
+      expect(price.textContent).toBe(expected);
+    } finally {
+      env.cleanup();
+    }
+  });
 });

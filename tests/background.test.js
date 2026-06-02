@@ -13,6 +13,7 @@ const { browserMock, fetchMock, storageState, alarmState, listeners } =
     const storageState = {
       ratesData: null,
       lastError: null,
+      customRates: null,
     };
     const alarmState = {};
     const listeners = {
@@ -76,6 +77,7 @@ const { browserMock, fetchMock, storageState, alarmState, listeners } =
 import {
   fetchRates,
   ensureAlarm,
+  getEffectiveRates,
   API_URL,
   ALARM_NAME,
   ALARM_INTERVAL_MINUTES,
@@ -109,6 +111,7 @@ beforeEach(() => {
   // Reset storage state
   storageState.ratesData = null;
   storageState.lastError = null;
+  storageState.customRates = null;
   // Reset alarm state
   Object.keys(alarmState).forEach((key) => delete alarmState[key]);
   // Reset fetch mock
@@ -609,5 +612,189 @@ describe("Initialization", () => {
       periodInMinutes: ALARM_INTERVAL_MINUTES,
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("getEffectiveRates", () => {
+  it("returns null when no ratesData in storage", async () => {
+    const result = await getEffectiveRates();
+    expect(result).toBeNull();
+  });
+
+  it("returns raw rates when no customRates", async () => {
+    storageState.ratesData = {
+      base: "BYN",
+      source: "NBRB",
+      sourceUrl: API_URL,
+      fetchedAt: Date.now(),
+      ratesDate: "2026-04-25",
+      rates: {
+        USD: { code: "USD", name: "Доллар США", scale: 1, rate: 3.0 },
+        EUR: { code: "EUR", name: "Евро", scale: 1, rate: 3.5 },
+        RUB: {
+          code: "RUB",
+          name: "Российских рублей",
+          scale: 100,
+          rate: 3.75,
+        },
+      },
+    };
+    storageState.customRates = null;
+
+    const result = await getEffectiveRates();
+    expect(result.rates.USD.rate).toBe(3.0);
+    expect(result.rates.EUR.rate).toBe(3.5);
+    expect(result.rates.RUB.rate).toBe(3.75);
+  });
+
+  it("merges customRates onto ratesData", async () => {
+    storageState.ratesData = {
+      base: "BYN",
+      source: "NBRB",
+      sourceUrl: API_URL,
+      fetchedAt: Date.now(),
+      ratesDate: "2026-04-25",
+      rates: {
+        USD: { code: "USD", name: "Доллар США", scale: 1, rate: 3.0 },
+        EUR: { code: "EUR", name: "Евро", scale: 1, rate: 3.5 },
+        RUB: {
+          code: "RUB",
+          name: "Российских рублей",
+          scale: 100,
+          rate: 3.75,
+        },
+      },
+    };
+    storageState.customRates = { USD: 3.1 };
+
+    const result = await getEffectiveRates();
+    expect(result.rates.USD.rate).toBe(3.1);
+    expect(result.rates.EUR.rate).toBe(3.5);
+    expect(result.rates.USD.scale).toBe(1);
+    expect(result.rates.USD.code).toBe("USD");
+  });
+});
+
+describe("Custom rates message handlers", () => {
+  it("saveCustomRate persists custom rate to storage", async () => {
+    for (const listener of listeners.onMessage) {
+      const sendResponse = vi.fn();
+      await listener(
+        { action: "saveCustomRate", currency: "USD", rate: 3.1 },
+        {},
+        sendResponse,
+      );
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      });
+    }
+
+    expect(storageState.customRates).toEqual({ USD: 3.1 });
+  });
+
+  it("saveCustomRate preserves existing custom rates", async () => {
+    storageState.customRates = { EUR: 3.6 };
+
+    for (const listener of listeners.onMessage) {
+      const sendResponse = vi.fn();
+      await listener(
+        { action: "saveCustomRate", currency: "USD", rate: 3.1 },
+        {},
+        sendResponse,
+      );
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      });
+    }
+
+    expect(storageState.customRates).toEqual({ EUR: 3.6, USD: 3.1 });
+  });
+
+  it("clearCustomRates empties custom rates", async () => {
+    storageState.customRates = { USD: 3.1 };
+
+    for (const listener of listeners.onMessage) {
+      const sendResponse = vi.fn();
+      await listener({ action: "clearCustomRates" }, {}, sendResponse);
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      });
+    }
+
+    expect(storageState.customRates).toEqual({});
+  });
+
+  it("getCustomRates returns stored custom rates", async () => {
+    storageState.customRates = { USD: 3.1, EUR: 3.6 };
+
+    for (const listener of listeners.onMessage) {
+      const sendResponse = vi.fn();
+      await listener({ action: "getCustomRates" }, {}, sendResponse);
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      });
+      const response = sendResponse.mock.calls[0][0];
+      expect(response.customRates).toEqual({ USD: 3.1, EUR: 3.6 });
+    }
+  });
+
+  it("getCustomRates returns empty object when no custom rates", async () => {
+    storageState.customRates = null;
+
+    for (const listener of listeners.onMessage) {
+      const sendResponse = vi.fn();
+      await listener({ action: "getCustomRates" }, {}, sendResponse);
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      });
+      const response = sendResponse.mock.calls[0][0];
+      expect(response.customRates).toEqual({});
+    }
+  });
+
+  it("refreshRates clears customRates after successful fetch", async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse(fixture));
+    storageState.customRates = { USD: 3.1 };
+
+    for (const listener of listeners.onMessage) {
+      const sendResponse = vi.fn();
+      await listener({ action: "refreshRates" }, {}, sendResponse);
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      });
+    }
+
+    expect(storageState.customRates).toEqual({});
+  });
+
+  it("getEffectiveRates message returns merged rates", async () => {
+    storageState.ratesData = {
+      base: "BYN",
+      source: "NBRB",
+      sourceUrl: API_URL,
+      fetchedAt: Date.now(),
+      ratesDate: "2026-04-25",
+      rates: {
+        USD: { code: "USD", name: "Доллар США", scale: 1, rate: 3.0 },
+      },
+    };
+    storageState.customRates = { USD: 3.1 };
+
+    for (const listener of listeners.onMessage) {
+      const sendResponse = vi.fn();
+      await listener({ action: "getEffectiveRates" }, {}, sendResponse);
+
+      await vi.waitFor(() => {
+        expect(sendResponse).toHaveBeenCalled();
+      });
+      const response = sendResponse.mock.calls[0][0];
+      expect(response.rates.USD.rate).toBe(3.1);
+    }
   });
 });

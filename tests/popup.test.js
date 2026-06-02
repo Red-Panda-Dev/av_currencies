@@ -69,6 +69,20 @@ async function bootstrapPopup(stateOverrides = {}) {
         if (msg?.action === "getRates" || msg?.action === "refreshRates") {
           return { ratesData: state.ratesData, lastError: state.lastError };
         }
+        if (msg?.action === "getCustomRates") {
+          return { customRates: state.customRates || {} };
+        }
+        if (msg?.action === "saveCustomRate") {
+          if (!state.customRates) state.customRates = {};
+          state.customRates[msg.currency] = msg.rate;
+          return { success: true };
+        }
+        if (msg?.action === "clearCustomRate") {
+          if (state.customRates) {
+            delete state.customRates[msg.currency];
+          }
+          return { success: true };
+        }
         return null;
       }),
     },
@@ -223,5 +237,195 @@ describe("popup display currency initialization", () => {
     await flushTicks();
 
     expect(state.selectedCurrency).toBe("EUR");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Custom rates — edit buttons and rendering
+// ---------------------------------------------------------------------------
+
+describe("popup custom rates — edit buttons", () => {
+  it("renders edit button for each rate row", async () => {
+    await bootstrapPopup();
+    const editButtons = document.querySelectorAll(".rate-row__edit");
+    expect(editButtons.length).toBe(3);
+
+    const currencies = [...editButtons].map((btn) => btn.dataset.currency);
+    expect(currencies).toContain("USD");
+    expect(currencies).toContain("EUR");
+    expect(currencies).toContain("RUB");
+  });
+
+  it("enters edit mode on edit button click", async () => {
+    await bootstrapPopup();
+    const usdEditBtn = document.querySelector(
+      '.rate-row__edit[data-currency="USD"]',
+    );
+    expect(usdEditBtn).not.toBeNull();
+
+    usdEditBtn.click();
+    await flushTicks();
+
+    const row = usdEditBtn.closest(".rate-row");
+    expect(row.classList.contains("rate-row--editing")).toBe(true);
+    const input = row.querySelector(".rate-row__input");
+    expect(input).not.toBeNull();
+    expect(input.type).toBe("number");
+  });
+
+  it("saves custom rate on Enter key", async () => {
+    const { browserMock } = await bootstrapPopup();
+    const usdEditBtn = document.querySelector(
+      '.rate-row__edit[data-currency="USD"]',
+    );
+    usdEditBtn.click();
+    await flushTicks();
+
+    const row = usdEditBtn.closest(".rate-row");
+    const input = row.querySelector(".rate-row__input");
+    input.value = "3.5";
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+    await flushTicks();
+
+    expect(
+      browserMock.runtime.sendMessage.mock.calls.some(
+        (call) =>
+          call[0]?.action === "saveCustomRate" &&
+          call[0]?.currency === "USD" &&
+          call[0]?.rate === 3.5,
+      ),
+    ).toBe(true);
+  });
+
+  it("cancels edit on Escape key without saving", async () => {
+    const { browserMock } = await bootstrapPopup();
+    const usdEditBtn = document.querySelector(
+      '.rate-row__edit[data-currency="USD"]',
+    );
+    usdEditBtn.click();
+    await flushTicks();
+
+    const row = usdEditBtn.closest(".rate-row");
+    const input = row.querySelector(".rate-row__input");
+    input.value = "99";
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    await flushTicks();
+
+    expect(
+      browserMock.runtime.sendMessage.mock.calls.some(
+        (call) => call[0]?.action === "saveCustomRate",
+      ),
+    ).toBe(false);
+    expect(row.classList.contains("rate-row--editing")).toBe(false);
+  });
+
+  it("renders accept and drop buttons in edit mode", async () => {
+    await bootstrapPopup();
+    const usdEditBtn = document.querySelector(
+      '.rate-row__edit[data-currency="USD"]',
+    );
+    usdEditBtn.click();
+    await flushTicks();
+
+    const row = usdEditBtn.closest(".rate-row");
+    const acceptBtn = row.querySelector(".rate-row__accept");
+    const dropBtn = row.querySelector(".rate-row__drop");
+
+    expect(acceptBtn).not.toBeNull();
+    expect(acceptBtn.textContent).toBe("✓");
+    expect(dropBtn).not.toBeNull();
+    expect(dropBtn.textContent).toBe("✕");
+  });
+
+  it("saves custom rate on accept button click", async () => {
+    const { browserMock } = await bootstrapPopup();
+    const usdEditBtn = document.querySelector(
+      '.rate-row__edit[data-currency="USD"]',
+    );
+    usdEditBtn.click();
+    await flushTicks();
+
+    const row = usdEditBtn.closest(".rate-row");
+    const input = row.querySelector(".rate-row__input");
+    const acceptBtn = row.querySelector(".rate-row__accept");
+    input.value = "3.5";
+    acceptBtn.click();
+    await flushTicks();
+
+    expect(
+      browserMock.runtime.sendMessage.mock.calls.some(
+        (call) =>
+          call[0]?.action === "saveCustomRate" &&
+          call[0]?.currency === "USD" &&
+          call[0]?.rate === 3.5,
+      ),
+    ).toBe(true);
+    expect(row.classList.contains("rate-row--editing")).toBe(false);
+  });
+
+  it("clears custom rate on drop button click", async () => {
+    const { browserMock, state } = await bootstrapPopup({
+      customRates: { USD: 3.5 },
+    });
+    const usdEditBtn = document.querySelector(
+      '.rate-row__edit[data-currency="USD"]',
+    );
+    usdEditBtn.click();
+    await flushTicks();
+
+    const row = usdEditBtn.closest(".rate-row");
+    const dropBtn = row.querySelector(".rate-row__drop");
+    dropBtn.click();
+    await flushTicks();
+
+    expect(
+      browserMock.runtime.sendMessage.mock.calls.some(
+        (call) =>
+          call[0]?.action === "clearCustomRate" && call[0]?.currency === "USD",
+      ),
+    ).toBe(true);
+    expect(state.customRates?.USD).toBeUndefined();
+    expect(row.classList.contains("rate-row--editing")).toBe(false);
+  });
+});
+
+describe("popup custom rates — rendering", () => {
+  it("adds rate-row--custom class for currencies with custom override", async () => {
+    await bootstrapPopup({ customRates: { USD: 3.5 } });
+    const usdRow = document
+      .querySelector('.rate-row__edit[data-currency="USD"]')
+      .closest(".rate-row");
+    const eurRow = document
+      .querySelector('.rate-row__edit[data-currency="EUR"]')
+      .closest(".rate-row");
+
+    expect(usdRow.classList.contains("rate-row--custom")).toBe(true);
+    expect(eurRow.classList.contains("rate-row--custom")).toBe(false);
+  });
+
+  it("displays custom rate value when custom override exists", async () => {
+    await bootstrapPopup({ customRates: { USD: 3.5 } });
+    const usdValue = document.getElementById("rate-usd");
+    expect(usdValue.textContent).toContain("3.5");
+  });
+
+  it("clears custom rates on refresh", async () => {
+    const { browserMock } = await bootstrapPopup({
+      customRates: { USD: 3.5 },
+    });
+    const refreshBtn = document.getElementById("refresh-btn");
+
+    refreshBtn.click();
+    await flushTicks(8);
+
+    expect(
+      browserMock.runtime.sendMessage.mock.calls.some(
+        (call) => call[0]?.action === "refreshRates",
+      ),
+    ).toBe(true);
   });
 });
