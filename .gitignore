@@ -2,3 +2,4 @@
 .hard-planner
 coverage
 node_modules
+.codegraph
