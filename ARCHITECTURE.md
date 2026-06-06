@@ -194,7 +194,6 @@ Worker stores/retrieves VINs in Cloudflare KV (`VIN_DATA` binding). Request iden
 - `DESIGN.md` — UI design rules, visual language, interaction patterns, and Russian string preservation.
 - `README.md` — user-facing Russian documentation, module summary, privacy notes, extension store links.
 - `VIN-LOGIC.md` — user-facing explanation of optional VIN sharing behavior.
-- `CUSTOM-RATES-PLAN.md` — execution plan for the custom rates feature (implemented).
 
 Module-level documentation:
 
