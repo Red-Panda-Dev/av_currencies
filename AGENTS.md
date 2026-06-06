@@ -39,7 +39,7 @@ worker/
 scripts/                   # Browser packaging scripts and shared package utilities
 examples/                  # NBRB fixture and saved AV.by HTML test fixtures
 icons/                     # Extension icons
-release-notes/             # Per-version bilingual release notes (v1.2.0–v1.5.0)
+release-notes/             # Per-version bilingual release notes (v1.2.0–v1.6.0)
 ```
 
 Generated artifacts; do not hand-edit:
@@ -98,7 +98,6 @@ Worker-only validation is documented in `worker/AGENTS.md`.
 - `DESIGN.md` — UI design rules, visual language, components, interaction rules, and Russian string preservation.
 - `README.md` — user-facing Russian documentation, module summary, privacy notes, extension links.
 - `VIN-LOGIC.md` — user-facing explanation of optional VIN sharing behavior.
-- `CUSTOM-RATES-PLAN.md` — execution plan for the custom rates feature (implemented).
 - `manifest.json` — extension permissions, entrypoints, Firefox ID, content-script matches.
 - `Makefile` and `package.json` — discoverable validation, packaging, and run commands.
 - `worker/README.md` — Worker business logic, storage, API base URL, CORS, secrets.
