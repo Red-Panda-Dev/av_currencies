@@ -34,7 +34,7 @@ For architecture boundaries, data flow, and code organization, see `AGENTS.md`, 
 - `src/popup/popup.css:351-402` — `.footer` (updated timestamp, refresh button) plus the `max-width: 380px` mobile tweak.
 - `src/popup/popup.js:55-81` — `renderRates()` safe DOM updates with `textContent`.
 - `src/popup/popup.js:103-112` — `renderStatus()` warning state (cached data).
-- `src/popup/popup.js:173-280` — `enterEditMode()` / `exitEditMode()` for custom rate editing.
+- `src/popup/popup.js:173-293` — `enterEditMode()` / `exitEditMode()` for custom rate editing.
 - `src/lib/rates.js:55-67` — `formatDisplayPrice()` and `formatRateLabel()` currency formatting.
 - `src/content/avby.js` (IIFE) — in-place text replacement with original-text preservation; `applyElementPrices()`, `applySalonPriceSuffixes()`, `applyOriginalDaysOnSale()`.
 - `icons/icon.svg` — source icon; PNGs derived at 16/32/48/128px.
