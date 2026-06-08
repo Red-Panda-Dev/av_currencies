@@ -25,13 +25,13 @@ For architecture boundaries, data flow, and code organization, see `AGENTS.md`, 
 ## Canonical UI examples
 
 - `src/popup/popup.html` — full popup layout: header, rates card, loading, error, converter, settings, footer.
-- `src/popup/popup.css:1-17` — CSS custom properties (dark theme) and the `--popup-width: 320px` constraint.
-- `src/popup/popup.css:78-84` — `.rates` card container with background, radius, shadow.
-- `src/popup/popup.css:86-175` — `.rate-row` structure (flag, code, value, edit) and state modifiers (`--custom`, `--editing`).
-- `src/popup/popup.css:194-207` — `.loading` and `.error` state styling.
-- `src/popup/popup.css:209-280` — `.converter` section (title, row, input, select, result).
-- `src/popup/popup.css:282-316` — `.settings` (label, select, VIN block, link).
-- `src/popup/popup.css:351-402` — `.footer` (updated timestamp, refresh button) plus the `max-width: 380px` mobile tweak.
+- `src/popup/popup.css:1-22` — CSS custom properties (dark theme) and the `--popup-width: 320px` constraint.
+- `src/popup/popup.css:83-89` — `.rates` card container with background, radius, shadow.
+- `src/popup/popup.css:91-197` — `.rate-row` structure (flag, code, value, edit) and state modifiers (`--custom`, `--editing`).
+- `src/popup/popup.css:199-212` — `.loading` and `.error` state styling.
+- `src/popup/popup.css:214-285` — `.converter` section (title, row, input, select, result).
+- `src/popup/popup.css:287-354` — `.settings` (label, select, VIN block, link).
+- `src/popup/popup.css:356-407` — `.footer` (updated timestamp, refresh button) plus the `max-width: 380px` mobile tweak.
 - `src/popup/popup.js:55-81` — `renderRates()` safe DOM updates with `textContent`.
 - `src/popup/popup.js:103-112` — `renderStatus()` warning state (cached data).
 - `src/popup/popup.js:173-293` — `enterEditMode()` / `exitEditMode()` for custom rate editing.
@@ -50,21 +50,24 @@ For architecture boundaries, data flow, and code organization, see `AGENTS.md`, 
 
 ## Visual language
 
-### Colors (CSS custom properties in `popup.css`)
+### Colors (Kanagawa Wave Palette)
 
-Dark theme (single theme, no `prefers-color-scheme` toggle):
-- `--bg: #1a1a2e` — page background.
-- `--bg-card: #252542` — card and input background.
-- `--text: #e5e7eb` — primary text.
-- `--text-muted: #9ca3af` — secondary text, labels, status.
-- `--border: #374151` — borders, separators.
-- `--accent: #60a5fa` — currency codes, links, active state, focus borders.
-- `--accent-hover: #93bbfd` — hover variant.
-- `--error-bg: #3b1c1c` / `--error-text: #fca5a5` — error states.
-- `--warning-bg: #3b2e1c` / `--warning-text: #fcd34d` — cached-data warning.
-- `--custom-rate: #fbbf24` — rate value when the user overrode it.
-
-Add a new semantic color by introducing a CSS variable, not a raw hex. All colors flow through variables so a future light theme can be added by overriding the `:root` block.
+- Defined as custom properties on `:root` in `src/popup/popup.css:1-22`. Always use variables, never raw hex.
+- Base palette:
+  - `--bg` (#1F1F28) — Sumi Dark (main background)
+  - `--bg-card` (#2A2A37) — Sumi Lighter (card background)
+  - `--text` (#DCD7BA) — Fuji (primary text)
+  - `--text-muted` (#C8C093) — Old White (secondary text)
+  - `--border` (#363646) — Sumi Lightest (borders)
+- Accent palette:
+  - `--accent` (#7E9CD8) — Wave Blue (interactive highlights)
+  - `--accent-hover` (#7FB4CA) — Spring Blue (hover states)
+- Semantic colors:
+  - `--success` (#95C561) — Dragon Green (accept buttons)
+  - `--danger` (#E82424) — Samurai Red (cancel buttons)
+  - `--error-bg` (#2A1E1E) / `--error-text` (#E82424) — Error states
+  - `--warning-bg` (#4A3D2A) / `--warning-text` (#FF9E3B) — Warning states
+  - `--custom-rate` (#FF9E3B) — Ronin Yellow (custom rates)
 
 ### Typography
 
@@ -119,7 +122,7 @@ State modifiers:
 
 - Min-height `44px` (touch-friendly).
 - Padding `10px 12px`.
-- Focus: accent border + `box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.25)` on the converter input; accent border only on selects.
+- Focus: accent border + `box-shadow: 0 0 0 2px rgba(126, 156, 216, 0.25)` on the converter input; accent border only on selects.
 - Hover on selects: inverts to accent background with white text.
 - No native outline (replaced by border/shadow).
 
@@ -159,10 +162,10 @@ State modifiers:
 ## Data display rules
 
 - **Currency codes** are 3-letter uppercase (`USD`, `EUR`, `RUB`, `BYN`).
-- **Rate display** — `formatRateLabel()` produces `X.XXXX BYN за 1 USD` / `… за 100 RUB`; SCALE_LABELS is the source of truth for the denominator.
+- **Rate display** — `formatRateLabel()` produces `X.XXXX BYN за 1 USD` / `… за 100 RUB`; `SCALE_LABELS` in `src/lib/rates.js:4` is the source of truth for the denominator.
 - **Converted prices** use `Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })` with a space before the symbol. Symbols: `р.` for BYN, `$` for USD, `€` for EUR, `RUB` for RUB.
+- **Price ranges** — `formatDisplayPriceRange()` in `src/content/avby.js:413` uses an em-dash with spaces (`N — N $`).
 - **Timestamps** use `formatTime()` for `Обновлено:` (`dd.mm HH:MM`).
-- **Date ranges** — `formatDisplayPriceRange()` uses an em-dash with spaces (`N — N $`).
 - **Days-on-sale** — content script appends `, всего N дней в продаже` to the first card stat whose text matches a date keyword (`опубликовано`, `обновлено`, `часов назад`, `дня назад`, `…`).
 - **Empty / unknown values** — leave sections hidden rather than showing placeholders. Errors render the API message as-is in `.error`.
 - **Comparisons / uncertainty** — when AV.by shows paired `р. ≈ $` lines (`PRICE_HISTORY_DUAL_REGEX`) or `≈ $…` secondary values, the content script converts both sides to the selected currency; if USD rate is missing, the secondary side stays in USD.
