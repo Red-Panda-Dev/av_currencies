@@ -45,7 +45,6 @@ globalThis.browser ??= globalThis.chrome;
   const GRAPH_LOG_DIFF_SELECTORS = [".graph-log__diff"];
   const GRAPH_LOG_SUM_SELECTORS = [".graph-log__sum"];
   const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
-  const SALON_SUFFIX_SELECTOR = "span:last-child";
   const VIN_BUTTON_SELECTOR = ".card-vin__number, .card-vin__button";
 
   const MONTHLY_REGEX =
@@ -667,7 +666,13 @@ globalThis.browser ??= globalThis.chrome;
     if (typeof value !== "string") return false;
 
     const normalized = value.replace(/[\s\u00A0\u202F]/g, "").toLowerCase();
-    return normalized === "р." || normalized === "р" || normalized === "p.";
+    return (
+      normalized === "р." ||
+      normalized === "р" ||
+      normalized === "p." ||
+      normalized === "руб." ||
+      normalized === "руб"
+    );
   }
 
   function applySalonPriceSuffixes() {
@@ -679,7 +684,10 @@ globalThis.browser ??= globalThis.chrome;
     const wrappers = document.querySelectorAll(SALON_PRICE_WRAPPER_SELECTOR);
 
     for (const wrapper of wrappers) {
-      const suffixElement = wrapper.querySelector(SALON_SUFFIX_SELECTOR);
+      // AV.by renders the BYN suffix as either <span>p.</span> or
+      // <small> руб.</small>; target the last element child and clear it
+      // only when it is recognized as a BYN suffix.
+      const suffixElement = wrapper.lastElementChild;
       if (!suffixElement) continue;
 
       const originalSuffix = getOriginalElementText(suffixElement);
