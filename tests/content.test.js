@@ -715,6 +715,94 @@ describe("av.by content script", () => {
     }
   });
 
+  it("converts fullscreen-gallery modal price and restores its original BYN text", async () => {
+    const originalText = `109\u00A0000 руб.`;
+    const html = `<html><body>
+      <div class="fullscreen-gallery fullscreen-gallery--active">
+        <div class="fullscreen-gallery__stage">
+          <div class="fullscreen-gallery__container">
+            <div class="fullscreen-gallery__about">
+              <p class="fullscreen-gallery__price">109\u00A0000 <small>руб.</small></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </body></html>`;
+
+    const env = await bootstrapContentScript(html, {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const price = env.dom.window.document.querySelector(
+        ".fullscreen-gallery__price",
+      );
+      expect(price).not.toBeNull();
+
+      const bynAmount = 109000;
+      const { rate, scale } = sampleRates.rates.USD;
+      const converted = (bynAmount * scale) / rate;
+      const expectedFormatted = `${new Intl.NumberFormat("ru-RU", {
+        maximumFractionDigits: 0,
+      }).format(Math.round(converted))} $`;
+
+      expect(price.textContent).toBe(expectedFormatted);
+      expect(price.textContent).not.toContain("руб.");
+      expect(price.textContent).toContain("$");
+      expect(price.dataset.avCurrenciesOriginalText).toBe(originalText);
+      expect(
+        Number.parseFloat(price.dataset.avCurrenciesBynAmount),
+      ).toBeCloseTo(bynAmount);
+
+      // Conversion flattens the <small> child, consistent with every other price;
+      // restore brings back the original BYN text as plain text.
+      expect(price.querySelector("small")).toBeNull();
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(price.textContent).toBe(originalText);
+    } finally {
+      env.cleanup();
+    }
+  });
+
+  it("converts fullscreen-gallery price added dynamically when modal opens", async () => {
+    const env = await bootstrapContentScript("<html><body></body></html>", {
+      ratesData: sampleRates,
+      selectedCurrency: "USD",
+    });
+
+    try {
+      const bynAmount = 109000;
+      const { rate, scale } = sampleRates.rates.USD;
+      const converted = (bynAmount * scale) / rate;
+      const expectedFormatted = `${new Intl.NumberFormat("ru-RU", {
+        maximumFractionDigits: 0,
+      }).format(Math.round(converted))} $`;
+
+      const gallery = env.dom.window.document.createElement("div");
+      gallery.innerHTML = `<div class="fullscreen-gallery__about">
+          <p class="fullscreen-gallery__price">109\u00A0000 <small>руб.</small></p>
+        </div>`;
+      env.dom.window.document.body.append(gallery);
+
+      await flushTicks();
+
+      const price = env.dom.window.document.querySelector(
+        ".fullscreen-gallery__price",
+      );
+      expect(price).not.toBeNull();
+      expect(price.textContent).toBe(expectedFormatted);
+      expect(price.dataset.avCurrenciesOriginalText).toBe(`109\u00A0000 руб.`);
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("restores original BYN text when currency switches back to BYN", async () => {
     const env = await bootstrapContentScript(indexFixture, {
       ratesData: sampleRates,

@@ -26,6 +26,7 @@ src/content/
 ## Safe change rules
 
 - Add new AV.by markup support by extending the relevant selector group and processing path; do not mix unrelated page-section logic into an existing branch just because selectors match today.
+- `PRICE_SELECTORS` covers plain BYN price elements across listing cards, detail cards, salon listings, stats/graph views, and the fullscreen photo-gallery modal (`.fullscreen-gallery__price`, rendered as `109\u00A0000 <small>руб.</small>`). Like every other price, the modal price is flattened to plain text on conversion (the `<small>` is removed) and restored to its cached BYN text on revert; the modal opens dynamically and is picked up by the existing `MutationObserver`, so no extra observer wiring is needed.
 - If conversion parsing or display formatting changes, update both this file and `src/lib/rates.js`, then run parsing and content tests.
 - Keep VIN feature behavior gated by `vinFeatureEnabled`; the default is off.
 - Preserve Russian user-facing messages and AV.by-specific text fragments.
