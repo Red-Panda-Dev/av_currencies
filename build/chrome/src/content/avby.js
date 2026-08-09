@@ -20,6 +20,7 @@ globalThis.browser ??= globalThis.chrome;
     ".listing-index__price",
     ".listing-item__price-primary",
     ".card__price-button",
+    ".fullscreen-gallery__price",
     ".listing-top__price-primary",
     ".featured__price-value strong",
     ".featured-item__price-primary",
