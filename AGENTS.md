@@ -92,15 +92,19 @@ make test-worker          # Run Worker tests from worker/
 
 Worker-only validation is documented in `worker/AGENTS.md`.
 
-## Key docs
+## Context routing
 
-- `ARCHITECTURE.md` — component model, data flow, and invariants.
-- `DESIGN.md` — UI design rules, visual language, components, interaction rules, and Russian string preservation.
-- `README.md` — user-facing Russian documentation, module summary, privacy notes, extension links.
-- `VIN-LOGIC.md` — user-facing explanation of optional VIN sharing behavior.
-- `manifest.json` — extension permissions, entrypoints, Firefox ID, content-script matches.
-- `Makefile` and `package.json` — discoverable validation, packaging, and run commands.
-- `worker/README.md` — Worker business logic, storage, API base URL, CORS, secrets.
+Read only when the change touches that area:
+
+- Architectural or cross-module changes, data flow, component model → `ARCHITECTURE.md`
+- UI, visual language, components, interaction rules, Russian UX copy → `DESIGN.md`
+- VIN sharing behavior or user-facing VIN wording → `VIN-LOGIC.md`
+- Worker business logic, KV record shape, API base URL, CORS, Secrets Store → `worker/README.md` (edit rules in `worker/AGENTS.md`)
+- Permissions, entrypoints, content-script matches, Firefox/Gecko ID → `manifest.json`
+- Extension run/dev targets (Firefox desktop, Chrome, Android) → `Makefile` (`run`, `run-chrome`, `run-android`)
+- Validation, packaging, and script definitions → `package.json` and `Makefile`
+- User-facing Russian documentation, privacy notes, store links → `README.md`
+- Cutting a release: per-version bilingual notes live in `release-notes/`; workflow in `.agents/skills/release-notes/SKILL.md`
 
 ## Repository-specific gotchas
 
