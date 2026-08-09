@@ -22,6 +22,7 @@ src/content/
 - `MutationObserver` watches `document.body` for child-list and character-data changes. Avoid changes that reprocess converted text indefinitely.
 - `originalDaysOnSale` is read from `__NEXT_DATA__` and appended as `, всего N дней в продаже` to matching card stats.
 - `customRates` changes from the storage listener trigger `scheduleApply()`.
+- `.salon-listing-top__prices` shows a separate BYN suffix element next to the converted price `<div>`, rendered by AV.by as either `<span>p.</span>` or `<small> руб.</small>`. `applySalonPriceSuffixes()` targets `wrapper.lastElementChild` (tag-agnostic) and clears it on conversion when `isBynSuffixText` matches (`р.`, `р`, `p.`, `руб.`, `руб`), restoring the cached suffix text on revert.
 
 ## Safe change rules
 

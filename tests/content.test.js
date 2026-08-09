@@ -472,6 +472,54 @@ describe("av.by content script", () => {
     }
   });
 
+  it("clears salon BYN suffix rendered as <small>руб.</small>", async () => {
+    const originalSuffix = `\u202Fруб.`;
+    const html = `<html><body>
+      <div class="salon-listing-top__prices">
+        <span>от\u00A0</span>
+        <div>85\u00A0219</div>
+        <small>${originalSuffix}</small>
+      </div>
+    </body></html>`;
+
+    const env = await bootstrapContentScript(html, {
+      ratesData: sampleRates,
+      selectedCurrency: "EUR",
+    });
+
+    try {
+      const wrapper = env.dom.window.document.querySelector(
+        ".salon-listing-top__prices",
+      );
+      const priceDiv = wrapper.querySelector("div");
+      const suffix = wrapper.querySelector("small");
+
+      const bynAmount = 85219;
+      const { rate, scale } = sampleRates.rates.EUR;
+      const converted = (bynAmount * scale) / rate;
+      const expectedFormatted = `${new Intl.NumberFormat("ru-RU", {
+        maximumFractionDigits: 0,
+      }).format(Math.round(converted))} €`;
+
+      expect(priceDiv.textContent).toBe(expectedFormatted);
+      expect(suffix.textContent).toBe("");
+      expect(wrapper.textContent).toContain("€");
+      expect(wrapper.textContent).not.toContain("руб");
+      expect(suffix.dataset.avCurrenciesOriginalText).toBe(originalSuffix);
+
+      await env.browserMock.browser.storage.local.set({
+        selectedCurrency: "BYN",
+      });
+      await flushTicks();
+
+      expect(priceDiv.textContent).toBe(`85\u00A0219`);
+      expect(suffix.textContent).toBe(originalSuffix);
+      expect(wrapper.textContent).toContain("руб");
+    } finally {
+      env.cleanup();
+    }
+  });
+
   it("converts parts list prices and restores their original BYN text", async () => {
     const env = await bootstrapContentScript(partsListFixture, {
       ratesData: sampleRates,
