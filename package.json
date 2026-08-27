@@ -1,6 +1,7 @@
 {
   "name": "av-currencies",
   "type": "module",
+  "license": "MIT",
   "scripts": {
     "test": "vitest run --coverage",
     "format": "prettier --write 'src/**/*.js' 'src/background.js' 'scripts/**/*.mjs' 'tests/**/*.js' 'worker/src/**/*.ts' 'manifest.json'",
