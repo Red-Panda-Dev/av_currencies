@@ -4,8 +4,8 @@
   "license": "MIT",
   "scripts": {
     "test": "vitest run --coverage",
-    "format": "prettier --write 'src/**/*.js' 'src/background.js' 'scripts/**/*.mjs' 'tests/**/*.js' 'worker/src/**/*.ts' 'manifest.json'",
-    "format:check": "prettier --check 'src/**/*.js' 'scripts/**/*.mjs' 'tests/**/*.js' 'worker/src/**/*.ts' 'manifest.json'",
+    "format": "prettier --write 'src/**/*.js' 'src/background.js' 'scripts/**/*.mjs' 'tests/**/*.js' 'worker/src/**/*.ts' 'ios/**/*.js' 'manifest.json'",
+    "format:check": "prettier --check 'src/**/*.js' 'scripts/**/*.mjs' 'tests/**/*.js' 'worker/src/**/*.ts' 'ios/**/*.js' 'manifest.json'",
     "package:chrome": "node scripts/build-chrome.mjs",
     "package:firefox": "node scripts/build-firefox.mjs",
     "package": "npm run package:chrome && npm run package:firefox"

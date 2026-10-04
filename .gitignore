@@ -1,5 +1,6 @@
 .osgrep
 .hard-planner
+.vitest
 coverage
 node_modules
 .codegraph
