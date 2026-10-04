@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AV.by Валюты (Safari iOS)
 // @namespace    av-by-currencies-personal
-// @version      2.0.0
+// @version      1.6.2
 // @description  Замена цен на av.by из BYN в USD / EUR / RUB по курсам НБРБ.
 // @match        https://av.by/*
 // @match        https://*.av.by/*
@@ -45,6 +45,7 @@
     ".listing-index__price",
     ".listing-item__price-primary",
     ".card__price-button",
+    ".fullscreen-gallery__price",
     ".listing-top__price-primary",
     ".featured__price-value strong",
     ".featured-item__price-primary",
@@ -55,6 +56,7 @@
     ".card-finance__description span",
     ".stats__price-primary",
     ".stats-listing-item__prices",
+    ".card__commercial-price b",
   ];
   const MONTHLY_ELEMENT_SELECTORS = [
     ".card__commercial-text > span:last-child",
@@ -68,17 +70,18 @@
   const GRAPH_LOG_DIFF_SELECTORS = [".graph-log__diff"];
   const GRAPH_LOG_SUM_SELECTORS = [".graph-log__sum"];
   const SALON_PRICE_WRAPPER_SELECTOR = ".salon-listing-top__prices";
-  const SALON_SUFFIX_SELECTOR = "span:last-child";
 
-  const MONTHLY_REGEX = /(\d[\d\s  ]*(?:[.,]\d+)?)\s*BYN(\s*в\s*месяц)/i;
+  const MONTHLY_REGEX =
+    /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN(\s*в\s*месяц)/i;
   const MONTHLY_MARKER_REGEX = /BYN\s*в\s*месяц/i;
   const FINANCE_RANGE_REGEX =
-    /(\d[\d\s  ]*(?:[.,]\d+)?)\s*[—-]\s*(\d[\d\s  ]*(?:[.,]\d+)?)\s*BYN/i;
+    /(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*[—-]\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*BYN/i;
   const FINANCE_DESCRIPTION_RANGE_REGEX = FINANCE_RANGE_REGEX;
   const PRICE_HISTORY_DUAL_REGEX =
-    /^(\d[\d\s  ]*(?:[.,]\d+)?)\s*р\.\s*≈\s*(\d[\d\s  ]*(?:[.,]\d+)?)\s*\$/;
-  const STATS_SECONDARY_REGEX = /^≈\s*(\d[\d\s  ]*(?:[.,]\d+)?)\s*\$/;
-  const GRAPH_LOG_DIFF_REGEX = /^([−\-+]\s*)(\d[\d\s  ]*(?:[.,]\d+)?)\s*р\./;
+    /^(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*р\.\s*≈\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*\$/;
+  const STATS_SECONDARY_REGEX = /^≈\s*(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*\$/;
+  const GRAPH_LOG_DIFF_REGEX =
+    /^([−\-+]\s*)(\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?)\s*р\./;
 
   const SKIP_TEXT_NODE_TAGS = new Set([
     "SCRIPT",
@@ -122,9 +125,11 @@
 
   function parseBynPrice(value) {
     if (typeof value !== "string") return null;
-    const match = value.match(/\d[\d\s  ]*(?:[.,]\d+)?/);
+    const match = value.match(/\d[\d\s\u00A0\u202F]*(?:[.,]\d+)?/);
     if (!match) return null;
-    const normalized = match[0].replace(/[\s  ]/g, "").replace(",", ".");
+    const normalized = match[0]
+      .replace(/[\s\u00A0\u202F]/g, "")
+      .replace(",", ".");
     const amount = Number.parseFloat(normalized);
     return Number.isFinite(amount) ? amount : null;
   }
@@ -170,11 +175,26 @@
   // 4. Storage (localStorage вместо browser.storage.local)
   // ──────────────────────────────────────────────────────────────────
 
+  function isValidRatesData(data) {
+    if (!data || typeof data !== "object") return false;
+    if (typeof data.fetchedAt !== "number" || !Number.isFinite(data.fetchedAt))
+      return false;
+    if (!data.rates || typeof data.rates !== "object") return false;
+    for (const code of TARGET_CURRENCIES) {
+      const info = data.rates[code];
+      if (!info || typeof info !== "object") return false;
+      if (!Number.isFinite(info.rate) || info.rate <= 0) return false;
+      if (!Number.isFinite(info.scale) || info.scale <= 0) return false;
+    }
+    return true;
+  }
+
   function loadRatesFromCache() {
     try {
       const raw = localStorage.getItem(LS_RATES_KEY);
       if (!raw) return null;
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return isValidRatesData(parsed) ? parsed : null;
     } catch {
       return null;
     }
@@ -526,8 +546,8 @@
 
   function isBynSuffixText(v) {
     if (typeof v !== "string") return false;
-    const n = v.replace(/[\s  ]/g, "").toLowerCase();
-    return n === "р." || n === "р" || n === "p.";
+    const n = v.replace(/[\s\u00A0\u202F]/g, "").toLowerCase();
+    return n === "р." || n === "р" || n === "p." || n === "руб." || n === "руб";
   }
 
   function applySalonPriceSuffixes() {
@@ -535,7 +555,7 @@
     for (const wrap of document.querySelectorAll(
       SALON_PRICE_WRAPPER_SELECTOR,
     )) {
-      const suffix = wrap.querySelector(SALON_SUFFIX_SELECTOR);
+      const suffix = wrap.lastElementChild;
       if (!suffix) continue;
       const original = getOriginalElementText(suffix);
       let next = original;
@@ -669,7 +689,9 @@
           }
         }
       }
-    } catch {}
+    } catch (e) {
+      console.error("Error displaying originalDaysOnSale:", e);
+    }
   }
 
   function applyAll() {
@@ -754,6 +776,9 @@
     const observer = new MutationObserver((mutations) => {
       let shouldApply = false;
       for (const m of mutations) {
+        const mutationHost =
+          m.type === "characterData" ? m.target.parentElement : m.target;
+        if (mutationHost?.closest?.("#avc-widget")) continue;
         if (m.type === "characterData") {
           if (registerMonthlyNode(m.target)) {
             pendingMonthlyNodes.add(m.target);
