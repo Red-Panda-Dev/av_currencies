@@ -4,11 +4,11 @@
 
 **AV.by Валюты** is a cross-browser WebExtension (Manifest V3) for Firefox and Chrome-based browsers. It replaces BYN prices on AV.by (`https://*.av.by/*`) with USD/EUR/RUB equivalents sourced from the National Bank of the Republic of Belarus (NBRB) API, and ships a Russian-language popup with current rates, a converter, display-currency selection, and custom rate overrides. An optional VIN-sharing feature crowdsources vehicle identification numbers through a separate Cloudflare Worker backend.
 
-The repository contains two loosely coupled projects that share no code and interact only over HTTPS at runtime: the browser extension (`src/`, `manifest.json`) and the VIN Worker (`worker/`). The extension is offline-resilient — failed NBRB responses write only `lastError` and never overwrite previously valid cached rates in `browser.storage.local`.
+The repository contains two loosely coupled projects that share no code and interact only over HTTPS at runtime: the browser extension (`src/`, `manifest.json`) and the VIN Worker (`worker/`). A third shipped artifact, the standalone iOS Safari userscript (`ios/av-currencies.user.js`), re-implements the price-conversion behavior outside any extension runtime. The extension is offline-resilient — failed NBRB responses write only `lastError` and never overwrite previously valid cached rates in `browser.storage.local`.
 
-The overarching paradigm is a single privileged background service that owns all network access and storage, with a sandboxed content script and an action popup as UI-only frontends that communicate with it exclusively through `browser.runtime.sendMessage`. Pure parsing/conversion/formatting logic is isolated in one Node-importable module.
+The overarching paradigm is a single privileged background service that owns all extension network access and storage, with a sandboxed content script and an action popup as UI-only frontends that communicate with it exclusively through `browser.runtime.sendMessage`. Pure parsing/conversion/formatting logic is isolated in one Node-importable module and duplicated into the two sandboxed runtimes that cannot import it. The userscript is a fourth, fully independent runtime.
 
-Evidence anchors: `manifest.json` (MV3, permissions, entrypoints), `src/background.js` (NBRB fetch, 240-min alarm, storage, messaging, VIN proxy), `src/content/avby.js` (content-script IIFE), `src/popup/popup.js` (popup controller), `src/lib/rates.js` (pure logic), `worker/wrangler.toml` (Cloudflare Worker config).
+Evidence anchors: `manifest.json` (MV3, permissions, entrypoints), `src/background.js` (NBRB fetch, 240-min alarm, storage, messaging, VIN proxy), `src/content/avby.js` (content-script IIFE), `src/popup/popup.js` (popup controller), `src/lib/rates.js` (pure logic), `ios/av-currencies.user.js` (self-contained userscript), `worker/wrangler.toml` (Cloudflare Worker config).
 
 ## 2. System Architecture (Logical)
 
@@ -56,6 +56,17 @@ Evidence anchors: `manifest.json` (MV3, permissions, entrypoints), `src/backgrou
 - State and external boundaries: its own DOM only.
 - Evidence: `src/popup/popup.js` (imports from `../lib/rates.js`, 0 `innerHTML`, 13 `textContent`, `sendMessage` calls).
 
+### iOS userscript
+
+- Responsibility: Standalone AV.by price conversion for iOS Safari under a userscript manager — the same product behavior as the content script, plus an in-page widget (`#avc-panel`) for display-currency selection and manual refresh. Parallel implementation, not a client of the extension.
+- Code locations: `ios/av-currencies.user.js`.
+- Entry points: `==UserScript==` header (`@match https://*.av.by/*`, `@run-at document-end`) → IIFE `start()`.
+- Depends on: nothing at source level — no imports, no shared modules; duplicates the AV.by selectors and the pure helpers from the extension.
+- Must not depend on: the extension runtime (`browser.*`, `browser.storage`), any build step, or bundling. Inferred: the single-file constraint exists because userscript managers install exactly one file.
+- Owns: `localStorage` keys `avc.ratesData.v1` / `avc.selectedCurrency.v1`, a 4-hour rates TTL, the `window.fetch` → `GM.xmlHttpRequest` / `GM_xmlhttpRequest` fallback chain, and its widget DOM.
+- State and external boundaries: AV.by DOM, `localStorage`, and `https://api.nbrb.by` only (`@connect api.nbrb.by`); no Worker/VIN interaction and no custom-rate support.
+- Evidence: `ios/av-currencies.user.js` (header grants, `LS_RATES_KEY`, `RATES_TTL_MS`, fallback chain), `tests/ios.test.js`, `ios/AGENTS.md`.
+
 ### VIN Worker
 
 - Responsibility: Independent Cloudflare Worker (TypeScript) that stores and serves VIN records keyed by AV.by `pageId`, with write/read confirmation bookkeeping and request-identity hashing.
@@ -79,6 +90,8 @@ NBRB API ──fetch──▶ background.js ──sendMessage──▶ popup.js
                        │                               ▲
                        └──storage.local──▶ content/avby.js  duplicate (no import)
 
+ios/av-currencies.user.js ──fetch/GM──▶ NBRB API   (standalone duplicate; localStorage only)
+
 VIN Worker ◀──fetch── background.js   (VIN read/write proxy)
 ```
 
@@ -98,13 +111,17 @@ src/
     ├── popup.css         # Styling with light/dark theme support
     └── popup.js          # Popup controller: rates, converter, custom rates, messages
 
+ios/
+├── AGENTS.md             # Userscript runtime, storage, and sync rules
+└── av-currencies.user.js # Standalone iOS Safari userscript (self-contained IIFE)
+
 worker/                   # Independent Cloudflare Worker project (TypeScript)
 ├── src/                  # index.ts (CORS/routing), crypto.ts, storage.ts, validation.ts, types.ts
 ├── test/worker.test.ts   # Worker endpoint, validation, CORS, storage tests
 ├── wrangler.toml         # Routes, KV + secret bindings, observability
 └── deploy.sh             # Build (tsc --noEmit) then wrangler deploy
 
-tests/                    # parse / background / content / popup suites (AGENTS.md documents harness)
+tests/                    # parse / background / content / popup / ios suites (AGENTS.md documents harnesses)
 scripts/                  # build-chrome.mjs, build-firefox.mjs, package-utils.mjs (zip + AGENTS stripping)
 examples/                 # NBRB fixture and saved AV.by HTML for tests
 icons/                    # Extension icons
@@ -138,7 +155,7 @@ Evidence: `src/background.js` (`fetchRates`, `getEffectiveRates`), `src/lib/rate
 6. Output or side effect: AV.by DOM rewritten in place; reversible to original BYN.
 
 Architectural boundaries crossed: `storage.local` → content script → AV.by DOM (isolated world).
-Evidence: `src/content/avby.js`.
+Evidence: `src/content/avby.js`. The iOS userscript runs the same shape of flow in a separate runtime: `start()` → `localStorage` cache with 4-hour TTL (stale ⇒ direct NBRB fetch with GM fallback) → `MutationObserver`-driven DOM conversion plus widget updates (`ios/av-currencies.user.js`).
 
 ### VIN submit/read (cross-project HTTP)
 
@@ -158,9 +175,9 @@ Evidence: `src/background.js` (`fetchVinForPage`, `submitVinForPage`), `worker/s
   - Rationale: Keeps conversion logic testable without mocks and guarantees zero browser coupling.
   - Enforcement / Signals: Source has exports only; `tests/parse.test.js` imports it directly.
 
-- Rule: All network `fetch` calls live in `src/background.js` only.
+- Rule: Within the extension, all network `fetch` calls live in `src/background.js` only.
   - Rationale: Centralizes network access behind the privileged service, enabling offline resilience and the minimal host-permission surface.
-  - Enforcement / Signals: No `fetch` in `src/popup/popup.js` or `src/content/avby.js`; popup/content use `sendMessage` and storage.
+  - Enforcement / Signals: No `fetch` in `src/popup/popup.js` or `src/content/avby.js`; popup/content use `sendMessage` and storage. The iOS userscript is outside this rule — a separate runtime that fetches NBRB directly by design.
 
 - Rule: Popup and background communicate only via `browser.runtime.sendMessage` (no mutual imports).
   - Rationale: Prevents circular coupling across the UI/service boundary.
@@ -170,17 +187,17 @@ Evidence: `src/background.js` (`fetchVinForPage`, `submitVinForPage`), `worker/s
   - Rationale: XSS defense against untrusted rate data.
   - Enforcement / Signals: 0 `innerHTML` occurrences and 13 `textContent` occurrences in `src/popup/popup.js`.
 
-- Rule: The content script is a self-contained IIFE with no ES module `import`/`export`.
-  - Rationale: MV3 content scripts execute in an isolated world without module support.
-  - Enforcement / Signals: `src/content/avby.js` is `(function initAvByCurrencyConversion(){…})()` with no imports/exports.
+- Rule: Sandboxed delivery artifacts are self-contained IIFEs with no `import`/`export`: `src/content/avby.js` (MV3 isolated world) and `ios/av-currencies.user.js` (single-file install). The userscript additionally confines storage to `localStorage` (`avc.*` keys, not `browser.storage`) and network hosts to `@connect api.nbrb.by`.
+  - Rationale: MV3 content scripts execute without module support; userscript managers install exactly one file.
+  - Enforcement / Signals: Source structure of both files; documented in `src/content/AGENTS.md` and `ios/AGENTS.md`; both are exercised without a production module loader in `tests/content.test.js` and `tests/ios.test.js`.
 
-- Rule: The pure helpers duplicated into the content script (`parseBynPrice`, `convertFromBYN`, `formatDisplayPrice`, `formatDisplayPriceRange`) must stay behaviorally aligned with `src/lib/rates.js`.
-  - Rationale: Consistent conversion/formatting across surfaces that cannot share the module.
-  - Enforcement / Signals: Convention documented in `src/content/AGENTS.md`; both implementations are covered by `tests/`.
+- Rule: The pure helpers duplicated into `src/content/avby.js` and `ios/av-currencies.user.js` (`parseBynPrice`, `convertFromBYN`, `formatDisplayPrice`, `formatDisplayPriceRange`) must stay behaviorally aligned with `src/lib/rates.js`.
+  - Rationale: Consistent conversion/formatting across runtimes that cannot share the module.
+  - Enforcement / Signals: Convention documented in the child `AGENTS.md` files; all three implementations are covered by `tests/`.
 
 - Rule: Failed API responses never overwrite previously valid `ratesData`; only `lastError` is written.
   - Rationale: Offline resilience — stale rates remain usable during network failures.
-  - Enforcement / Signals: The `catch` path in `fetchRates` sets only `lastError`.
+  - Enforcement / Signals: The `catch` path in `fetchRates` sets only `lastError`; mirrored in the userscript, which keeps its cached rates and surfaces errors in the widget.
 
 - Rule: Custom overrides live under `customRates`, separate from `ratesData`, merged at read time and cleared to `{}` after a successful forced refresh.
   - Rationale: Keeps authoritative NBRB data clean; overrides are transient.
@@ -198,14 +215,14 @@ Evidence: `src/background.js` (`fetchVinForPage`, `submitVinForPage`), `worker/s
   - Rationale: Separate deployment lifecycle, runtime, and language (TypeScript vs plain JS).
   - Enforcement / Signals: Own `package.json`, `tsconfig.json`, `vitest.config.ts`, `wrangler.toml`; the only link is the HTTPS boundary.
 
-- Rule: `src/lib/rates.js` and `src/background.js` must each stay at or above 80% coverage (lines, functions, branches, statements).
-  - Rationale: Protects the two load-bearing modules that carry the conversion contract and all network/state logic.
-  - Enforcement / Signals: `vitest.config.js` coverage `include` covers `src/**/*.js` excluding `src/content/**` and `src/popup/**`, with 80% thresholds enforced via `npm test`.
+- Rule: Coverage gates in `vitest.config.js` are per-glob: `src/**/*.js` (excluding `src/content/**`, `src/popup/**`) at 80% lines/functions/branches/statements — protecting `src/lib/rates.js` and `src/background.js`; `ios/**/*.js` at 70/75/50/65.
+  - Rationale: Protects the load-bearing modules carrying the conversion contract, network/state logic, and the userscript runtime.
+  - Enforcement / Signals: `npm test` fails below the per-glob thresholds; the ios userscript is only measurable through the import-based harness in `tests/ios.test.js`.
 
 ## 6. Documentation Strategy
 
 - `ARCHITECTURE.md` (this file) owns the global architecture map: component model, representative data flows, and architectural invariants.
-- `AGENTS.md` owns repository-wide agent operating rules, change rules, where-to-work routing, and validation commands; child `AGENTS.md` files (`src/content/AGENTS.md`, `src/popup/AGENTS.md`, `tests/AGENTS.md`, `worker/AGENTS.md`) carry local instruction deltas.
+- `AGENTS.md` owns repository-wide agent operating rules, change rules, where-to-work routing, and validation commands; child `AGENTS.md` files (`src/content/AGENTS.md`, `src/popup/AGENTS.md`, `ios/AGENTS.md`, `tests/AGENTS.md`, `worker/AGENTS.md`) carry local instruction deltas.
 - `DESIGN.md` owns UI design rules, visual language, interaction patterns, and Russian UX copy.
 - `README.md` owns user-facing Russian documentation, privacy notes, and store links.
 - `VIN-LOGIC.md` owns the user-facing explanation of optional VIN sharing.

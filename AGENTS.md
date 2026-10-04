@@ -2,7 +2,7 @@
 
 ## Repository overview
 
-Cross-browser WebExtension (Manifest V3) for Firefox and Chrome-based browsers. It replaces BYN prices on AV.by with USD/EUR/RUB equivalents from the NBRB API, provides a Russian-language popup with rates and a converter, supports custom rate overrides per currency, and supports an optional VIN sharing feature through a separate Cloudflare Worker in `worker/`.
+Cross-browser WebExtension (Manifest V3) for Firefox and Chrome-based browsers. It replaces BYN prices on AV.by with USD/EUR/RUB equivalents from the NBRB API, provides a Russian-language popup with rates and a converter, supports custom rate overrides per currency, and supports an optional VIN sharing feature through a separate Cloudflare Worker in `worker/`. A standalone iOS Safari userscript with the same AV.by price conversion lives in `ios/`.
 
 Rates are offline-resilient: failed refreshes must preserve the last valid cached rates in `browser.storage.local`. Custom rate overrides are stored separately under `customRates` and cleared when NBRB rates are refreshed.
 
@@ -27,7 +27,8 @@ tests/
 ├── parse.test.js          # `src/lib/rates.js` pure-function tests
 ├── background.test.js     # Background tests with hoisted browser/fetch mocks
 ├── content.test.js        # JSDOM content-script tests using AV.by fixtures
-└── popup.test.js          # JSDOM popup tests using popup markup
+├── popup.test.js          # JSDOM popup tests using popup markup
+└── ios.test.js            # JSDOM tests importing the ios userscript for coverage
 
 worker/
 ├── AGENTS.md              # Cloudflare Worker-specific guidance
@@ -36,10 +37,14 @@ worker/
 ├── wrangler.toml          # Worker routes, KV, vars, secrets-store binding, observability
 └── deploy.sh              # Builds then deploys the Worker
 
+ios/
+├── AGENTS.md              # Userscript-specific runtime, storage, and sync rules
+└── av-currencies.user.js  # Standalone iOS Safari userscript (self-contained IIFE)
+
 scripts/                   # Browser packaging scripts and shared package utilities
 examples/                  # NBRB fixture and saved AV.by HTML test fixtures
 icons/                     # Extension icons
-release-notes/             # Per-version bilingual release notes (v1.2.0–v1.6.0)
+release-notes/             # Per-version bilingual release notes (v1.2.0–v1.6.2)
 ```
 
 Generated artifacts; do not hand-edit:
@@ -59,6 +64,7 @@ av-currencies-chrome.zip
 - Network fetches for extension code belong in `src/background.js`. The popup and content script communicate through `browser.runtime.sendMessage` and storage.
 - Popup DOM updates use `textContent`; do not introduce `innerHTML` or inline event handlers.
 - `src/content/avby.js` is a self-contained IIFE, not an ES module. It duplicates `parseBynPrice`, `convertFromBYN`, `formatDisplayPrice`, and `formatDisplayPriceRange` from `src/lib/rates.js`; keep all copies in sync.
+- `ios/av-currencies.user.js` is a self-contained userscript IIFE for iOS Safari with no build step and no imports. It embeds its own copies of the rates helpers and AV.by selectors from `src/lib/rates.js` and `src/content/avby.js`; keep all copies aligned.
 - `manifest.json` is the source manifest. `scripts/build-chrome.mjs` generates the Chrome build manifest in `build/chrome/`.
 - Source entrypoints use `globalThis.browser ??= globalThis.chrome;` for Firefox/Chrome API compatibility.
 - `worker/` is an independent Cloudflare Worker project with its own `package.json`, TypeScript config, Vitest config, and Wrangler deployment.
@@ -72,6 +78,7 @@ av-currencies-chrome.zip
 - Custom rates are stored under `customRates` (shape: `{ USD: 3.1 }`) — never written into `ratesData`. The `getRateInfo` / `getEffectiveRates` helpers merge at read time: `customRates[code] ?? ratesData.rates[code].rate`.
 - `refreshRates` clears `customRates` to `{}` after a successful NBRB fetch.
 - Keep the only extension `host_permissions` limited to the NBRB API and the VIN Worker API unless a new permission is explicitly justified in `manifest.json`.
+- The ios userscript persists to `localStorage` (`avc.ratesData.v1`, `avc.selectedCurrency.v1`), not `browser.storage`; it has no custom rates, VIN, or messaging features — do not port extension-only behavior into it.
 - Preserve Russian UI strings when editing popup markup, popup logic, content-script messages, and user-facing docs.
 - Build scripts call `removeAgentsFiles()` from `scripts/package-utils.mjs`; packaged extension directories should not contain `AGENTS.md` files.
 
@@ -79,7 +86,7 @@ av-currencies-chrome.zip
 
 ```bash
 npm test                  # Run extension Vitest suite with coverage
-npm run format:check      # Check formatting for source, scripts, tests, worker TS, manifest
+npm run format:check      # Check formatting for source, scripts, tests, worker TS, ios userscript, manifest
 npm run format            # Apply Prettier to the configured files
 npm run package:firefox   # Build Firefox package output
 npm run package:chrome    # Build Chrome package output
@@ -99,6 +106,7 @@ Read only when the change touches that area:
 - Architectural or cross-module changes, data flow, component model → `ARCHITECTURE.md`
 - UI, visual language, components, interaction rules, Russian UX copy → `DESIGN.md`
 - VIN sharing behavior or user-facing VIN wording → `VIN-LOGIC.md`
+- iOS userscript behavior, storage keys, or selector parity → `ios/AGENTS.md`
 - Worker business logic, KV record shape, API base URL, CORS, Secrets Store → `worker/README.md` (edit rules in `worker/AGENTS.md`)
 - Permissions, entrypoints, content-script matches, Firefox/Gecko ID → `manifest.json`
 - Extension run/dev targets (Firefox desktop, Chrome, Android) → `Makefile` (`run`, `run-chrome`, `run-android`)
@@ -116,4 +124,5 @@ Read only when the change touches that area:
 - `tests/content.test.js` executes the content script source in JSDOM; if the content script uses new browser APIs, its local browser mock must be extended.
 - `tests/background.test.js` imports `src/background.js` after `vi.hoisted()` globals because background code registers browser listeners at module load time.
 - Background message actions: `ensureRates`, `getRates`, `refreshRates`, `getEffectiveRates`, `saveCustomRate`, `clearCustomRate`, `clearCustomRates`, `getCustomRates`, `getVinForPage`, `submitVinForPage`.
-- Coverage thresholds in `vitest.config.js` apply to `src/**/*.js` except `src/content/**` and `src/popup/**`, so `src/lib/rates.js` and `src/background.js` must stay at or above 80% for lines, functions, branches, and statements.
+- Coverage thresholds in `vitest.config.js` are per-glob: `src/**/*.js` (except `src/content/**` and `src/popup/**`) at 80% for lines, functions, branches, and statements; `ios/**/*.js` at 70/75/50/65 (lines/functions/branches/statements).
+- `tests/ios.test.js` runs the userscript via `vi.resetModules()` plus a literal-path dynamic `import()` with jsdom globals installed on `globalThis`; `dom.window.eval` would execute in JSDOM's VM context and report 0% coverage.
