@@ -77,6 +77,8 @@ npm test                           # весь набор; для ios/ дейст
 
 [Файл userscript `av-currencies.user.js`](https://raw.githubusercontent.com/Red-Panda-Dev/av_currencies/main/ios/av-currencies.user.js)
 
+[Страница userscript на Greasy Fork](https://greasyfork.org/en/scripts/598719-av-by-%D0%B2%D0%B0%D0%BB%D1%8E%D1%82%D1%8B-safari-ios)
+
 [Расширение в Addons Mozilla.org](https://addons.mozilla.org/en-US/firefox/addon/av-by-%D0%B2%D0%B0%D0%BB%D1%8E%D1%82%D1%8B/)
 
 [Расширение в Chrome Webstore](https://chromewebstore.google.com/detail/avby-%D0%B2%D0%B0%D0%BB%D1%8E%D1%82%D1%8B/nghinljmkmfpnmmkohokkeeomglpogin)
