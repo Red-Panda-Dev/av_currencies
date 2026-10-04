@@ -9,6 +9,7 @@
 // @grant        GM.xmlHttpRequest
 // @grant        GM_xmlhttpRequest
 // @connect      api.nbrb.by
+// @license      MIT
 // @noframes
 // ==/UserScript==
 
