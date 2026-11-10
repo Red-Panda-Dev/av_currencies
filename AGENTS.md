@@ -91,11 +91,13 @@ npm run format            # Apply Prettier to the configured files
 npm run package:firefox   # Build Firefox package output
 npm run package:chrome    # Build Chrome package output
 npm run package           # Build both browser packages
-make lint                 # Makefile alias for format check
-make build                # Format, lint, test, then package Firefox and Chrome
-make build-chrome         # Format, lint, test, then package Chrome
-make test-worker          # Run Worker tests from worker/
+just lint                 # Format check (same as npm run format:check)
+just build                # Format, lint, test, then package Firefox and Chrome
+just build-chrome         # Format, lint, test, then package Chrome
+just test-worker          # Run Worker tests from worker/
 ```
+
+Task-runner recipes live in the root `justfile` (`just --list`); they replace the former Makefile.
 
 Worker-only validation is documented in `worker/AGENTS.md`.
 
@@ -109,8 +111,8 @@ Read only when the change touches that area:
 - iOS userscript behavior, storage keys, or selector parity → `ios/AGENTS.md`
 - Worker business logic, KV record shape, API base URL, CORS, Secrets Store → `worker/README.md` (edit rules in `worker/AGENTS.md`)
 - Permissions, entrypoints, content-script matches, Firefox/Gecko ID → `manifest.json`
-- Extension run/dev targets (Firefox desktop, Chrome, Android) → `Makefile` (`run`, `run-chrome`, `run-android`)
-- Validation, packaging, and script definitions → `package.json` and `Makefile`
+- Extension run/dev targets (Firefox desktop, Chrome, Android) → `justfile` (`run`, `run-chrome`, `run-android`)
+- Validation, packaging, and script definitions → `package.json` and `justfile`
 - User-facing Russian documentation, privacy notes, store links → `README.md`
 - Cutting a release: per-version bilingual notes live in `release-notes/`; workflow in `.agents/skills/release-notes/SKILL.md`
 

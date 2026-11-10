@@ -125,6 +125,6 @@ npm run deploy           # Деплой через wrangler
 
 Из корня репозитория:
 ```bash
-make test-worker         # Запустить тесты Worker
-make deploy-worker       # Деплой Worker
+just test-worker         # Запустить тесты Worker
+just deploy-worker       # Деплой Worker
 ```

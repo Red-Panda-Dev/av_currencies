@@ -48,7 +48,7 @@ npm run deploy         # Wrangler deploy only
 ./deploy.sh            # Build, then deploy
 ```
 
-From the repository root, `make test-worker` runs Worker tests and `make deploy-worker` runs `worker/deploy.sh`.
+From the repository root, `just test-worker` runs Worker tests and `just deploy-worker` runs `worker/deploy.sh`.
 
 ## Nearby docs
 

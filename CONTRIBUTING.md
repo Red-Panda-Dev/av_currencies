@@ -40,6 +40,9 @@ Before you start, familiarize yourself with the project documentation:
    cd worker && npm install
    ```
 
+4. Install [just](https://just.systems) — the repo's task runner. Recipes live
+   in the root `justfile` (`just --list`); they replace the former Makefile.
+
 ## Checks before opening a PR
 
 Make sure everything passes locally:
@@ -47,14 +50,14 @@ Make sure everything passes locally:
 ```bash
 npm run format          # Prettier (or npm run format:check)
 npm test                # Vitest with coverage
-make test-worker        # Worker tests (if you changed worker/)
+just test-worker        # Worker tests (if you changed worker/)
 npm run package         # build Firefox and Chrome packages
 ```
 
 Or run everything at once:
 
 ```bash
-make build              # format, lint, test, then package both browsers
+just build              # format, lint, test, then package both browsers
 ```
 
 Coverage requirement: `src/lib/rates.js` and `src/background.js` must stay at
@@ -93,9 +96,9 @@ Coverage requirement: `src/lib/rates.js` and `src/background.js` must stay at
 ## Running locally for debugging
 
 ```bash
-make run          # Firefox
-make run-chrome   # Chrome
-make run-android  # Firefox for Android
+just run          # Firefox
+just run-chrome   # Chrome
+just run-android  # Firefox for Android
 ```
 
 ## Questions and bug reports
